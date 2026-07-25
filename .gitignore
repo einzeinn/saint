@@ -4,6 +4,7 @@ venv/
 .datahub-loader-venv/
 .datahub-venv/
 .package-test-venv/
+.package-test-312/
 
 # Python cache
 __pycache__/
