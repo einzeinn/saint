@@ -1,0 +1,45 @@
+# Python environments
+.venv/
+venv/
+.datahub-loader-venv/
+.datahub-venv/
+.package-test-venv/
+
+# Python cache
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Coverage
+.coverage
+htmlcov/
+
+# Logs
+logs/
+*.log
+
+# Environment and secrets
+.env
+!.env.example
+*.pem
+*.key
+*.secret
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Frontend
+node_modules/
+.next/
+dist-frontend/
+
+# Tooling
+.codex
+
+# OS
+.DS_Store
+Thumbs.db

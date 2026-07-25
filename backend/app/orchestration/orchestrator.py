@@ -1,0 +1,142 @@
+from backend.app.adapters.datahub import DataHubAdapter
+from backend.app.adapters.llm import LLMAdapter
+from backend.app.domain import (
+    ContextualPath,
+    GoalInterpretation,
+    GoalRequest,
+    Intent,
+    PathAssessment,
+    PathStep,
+)
+
+
+class SaintOrchestrator:
+    def __init__(self, llm: LLMAdapter, datahub: DataHubAdapter) -> None:
+        self._llm = llm
+        self._datahub = datahub
+
+    async def interpret_goal(self, request: GoalRequest) -> GoalInterpretation:
+        return await self._llm.interpret_goal(request)
+
+    async def generate_contextual_path(self, request: GoalRequest) -> ContextualPath:
+        interpretation = await self.interpret_goal(request)
+        discovery = await self._datahub.discover_context(interpretation)
+        context = discovery.entities
+
+        context_refs = [entity.urn for entity in context]
+        steps = [
+            PathStep(
+                title="Confirm goal interpretation",
+                mode=interpretation.intent,
+                purpose="Make Saint's assumptions visible before deeper execution.",
+                user_action="Review the desired outcome and required actions.",
+                context_refs=[],
+                step_type="confirmation",
+            ),
+        ]
+
+        if context:
+            for entity in context[:5]:
+                metadata_hint = self._metadata_hint(entity.metadata)
+                steps.append(
+                    PathStep(
+                        title=f"Review {entity.name}",
+                        mode=Intent.explore,
+                        purpose=(
+                            f"Use this {entity.entity_type} as evidence: {entity.relevance}"
+                            f"{metadata_hint}"
+                        ),
+                        user_action=f"Review the metadata and relevance of {entity.name}.",
+                        context_refs=[entity.urn],
+                        step_type="context",
+                    )
+                )
+                if entity.relationships:
+                    steps.append(
+                        PathStep(
+                            title=f"Trace relationships from {entity.name}",
+                            mode=Intent.explore,
+                            purpose="Connect this asset to related upstream or downstream context.",
+                            user_action="Compare the selected asset with its related DataHub assets.",
+                            context_refs=[entity.urn, *entity.relationships],
+                            step_type="relationship",
+                        )
+                    )
+        else:
+            steps.append(
+                PathStep(
+                    title="Inspect relevant DataHub context",
+                    mode=Intent.explore,
+                    purpose="Use discovered context instead of generic guidance.",
+                    user_action="Review the entities and relationships Saint found.",
+                    context_refs=[],
+                    step_type="context",
+                )
+            )
+
+        steps.append(
+            PathStep(
+                title="Choose the next evidence-backed action",
+                mode=interpretation.intent,
+                purpose=f"Move from the discovered context toward: {interpretation.desired_outcome}.",
+                user_action="Select the next step based on the visible evidence and relationships.",
+                context_refs=context_refs[:1],
+                step_type="action",
+            )
+        )
+
+        return ContextualPath(
+            interpretation=interpretation,
+            context=context,
+            steps=steps,
+            outcome=interpretation.desired_outcome,
+            context_source=discovery.source,
+            context_notes=discovery.notes,
+        )
+
+    @staticmethod
+    def _metadata_hint(metadata: dict) -> str:
+        relevant = [
+            f"{key}: {value}"
+            for key in ("owner", "freshness", "quality", "domain")
+            if (value := metadata.get(key)) not in (None, "")
+        ]
+        return f" Metadata evidence: {', '.join(relevant)}." if relevant else ""
+
+    async def datahub_status(self):
+        return await self._datahub.status()
+
+    def feedback_for_step(self, path: ContextualPath, step_index: int) -> str:
+        step = path.steps[step_index]
+        if step.context_refs:
+            return (
+                f"This step is grounded in {len(step.context_refs)} context reference(s). "
+                "The prototype is showing why this action belongs in the path."
+            )
+
+        return (
+            "This step keeps the goal interpretation inspectable before the system "
+            "uses mock context to generate the path."
+        )
+
+    def replan_path(self, path: ContextualPath, assessment: PathAssessment) -> ContextualPath:
+        """Add a prerequisite when the user says the current path was not useful."""
+        if assessment.useful:
+            return path
+
+        revised = path.model_copy(deep=True)
+        anchor_refs = revised.steps[1].context_refs if len(revised.steps) > 1 else []
+        revised.steps.insert(
+            1,
+            PathStep(
+                title="Clarify the evidence gap",
+                mode=Intent.explore,
+                purpose="Identify what is still unclear before continuing through the path.",
+                user_action=assessment.feedback or "Describe which evidence or relationship needs more explanation.",
+                context_refs=anchor_refs,
+                step_type="assessment",
+            ),
+        )
+        revised.context_notes.append("Path replanned after the user reported that the previous path was not useful.")
+        revised.outcome = "A revised contextual path that addresses the user's evidence gap."
+        return revised
