@@ -4,6 +4,7 @@ from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+
 class Settings(BaseSettings):
     app_name: str = "Saint"
     app_env: str = "development"
@@ -19,6 +20,8 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
     groq_api_key: str = ""
     groq_base_url: str = ""
+    llm_model: str = ""  # dipakai khusus Gemini
+    groq_model: str = ""  # dipakai khusus Groq
 
     datahub_provider: str = "mock"
     datahub_gms_url: str = "http://localhost:8080"

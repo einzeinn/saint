@@ -2,6 +2,9 @@ import json
 from typing import Any, Protocol
 
 import httpx
+import logging
+ 
+logger = logging.getLogger("saint.llm")
 
 from backend.app.config import Settings
 from backend.app.domain import (
@@ -155,33 +158,51 @@ class MockLLMAdapter:
 
 class StructuredLLMAdapter:
     provider_name = "mock"
-
+ 
     def __init__(self, provider: LLMAdapter, fallback: LLMAdapter | None = None) -> None:
         self._provider = provider
         self._fallback = fallback or MockLLMAdapter()
         self.provider_name = getattr(provider, "provider_name", "mock")
-
+ 
     async def interpret_goal(self, request: GoalRequest) -> GoalInterpretation:
         try:
             result = await self._provider.interpret_goal(request)
             return self._coerce_goal_interpretation(result, request)
-        except Exception:
+        except Exception as exc:
+            logger.warning(
+                "LLM provider '%s' failed on interpret_goal (%s); falling back to '%s'",
+                self.provider_name,
+                exc,
+                getattr(self._fallback, "provider_name", "mock"),
+            )
             return await self._fallback.interpret_goal(request)
-
+ 
     async def explain_context(self, context: ContextPackage) -> str:
         try:
             result = await self._provider.explain_context(context)
             if isinstance(result, str) and result.strip():
                 return result
             raise ValueError("provider returned an invalid explanation")
-        except Exception:
+        except Exception as exc:
+            logger.warning(
+                "LLM provider '%s' failed on explain_context (%s); falling back to '%s'",
+                self.provider_name,
+                exc,
+                getattr(self._fallback, "provider_name", "mock"),
+            )
             return await self._fallback.explain_context(context)
-
+ 
     async def assess_response(self, context: AssessmentContext, user_response: str) -> AssessmentResult:
         try:
             result = await self._provider.assess_response(context, user_response)
             return self._coerce_assessment_result(result)
-        except Exception:
+        except Exception as exc:
+            logger.warning(
+                "LLM provider '%s' failed on assess_response (%s); falling back to '%s'",
+                self.provider_name,
+                exc,
+                getattr(self._fallback, "provider_name", "mock"),
+            )
             return await self._fallback.assess_response(context, user_response)
 
     @staticmethod
@@ -303,41 +324,67 @@ class GeminiProvider:
 
     @staticmethod
     def _build_goal_prompt(request: GoalRequest) -> str:
-        return json.dumps(
-            {
-                "original_input": request.goal,
-                "intent": request.intent.value,
-                "desired_outcome": "evidence-backed explanation",
-                "required_evidence": ["context", "relationships", "evidence"],
-                "confidence": 0.8,
-            }
+        return (
+            "You are Saint's goal-interpretation layer. Read the user's natural-language "
+            "goal and return ONLY a JSON object (no prose, no markdown fences) matching "
+            "this exact shape:\n\n"
+            '{\n'
+            '  "original_input": "<the user goal, verbatim>",\n'
+            '  "intent": "<one of: learn, explore, act>",\n'
+            '  "target": "<the specific thing the user cares about, e.g. a dashboard, '
+            'dataset, or pipeline name mentioned or implied in the goal>",\n'
+            '  "desired_outcome": "<a one-sentence outcome specific to THIS goal, '
+            'not a generic phrase>",\n'
+            '  "required_actions": ["<3-5 concrete steps specific to this goal>"],\n'
+            '  "required_evidence": ["<specific evidence types needed, e.g. '
+            '\'upstream pipeline logs\', \'freshness metadata\'>"],\n'
+            '  "confidence": <float 0-1>\n'
+            '}\n\n'
+            f'User goal: "{request.goal}"\n'
+            f'User-selected intent (may be "unsure"): "{request.intent.value}"\n\n'
+            "Base your interpretation on the actual wording and subject of the goal above. "
+            "Do not reuse example values from this prompt in your answer."
         )
 
     @staticmethod
-    def _build_context_prompt(context: ContextPackage | dict[str, Any]) -> str:
+    def _build_context_prompt(context: "ContextPackage | dict") -> str:
         if isinstance(context, dict):
             context = ContextPackage(**context)
-        return json.dumps(
-            {
-                "goal": context.goal,
-                "current_entity": context.current_entity,
-                "evidence": context.evidence,
-                "relationships": context.relationships,
-                "next_action": context.next_action,
-            }
+        return (
+            "You are Saint's context-explanation layer. Below is structured context "
+            "that Saint's core has already discovered from DataHub. Explain it to the "
+            "user in 2-4 plain-English sentences. Do not invent facts that are not in "
+            "the data below. Do not add a preamble like 'Here is the explanation' — "
+            "just write the explanation directly.\n\n"
+            f"Goal: {context.goal}\n"
+            f"Current entity: {context.current_entity or 'none'}\n"
+            f"Evidence: {', '.join(context.evidence) if context.evidence else 'none'}\n"
+            f"Related assets: {', '.join(context.relationships) if context.relationships else 'none'}\n"
+            f"Suggested next action: {context.next_action or 'none'}\n"
         )
 
     @staticmethod
-    def _build_assessment_prompt(context: AssessmentContext | dict[str, Any], user_response: str) -> str:
+    def _build_assessment_prompt(context: "AssessmentContext | dict", user_response: str) -> str:
         if isinstance(context, dict):
             context = AssessmentContext(**context)
-        return json.dumps(
-            {
-                "goal": context.goal,
-                "current_step": context.current_step,
-                "evidence": context.evidence,
-                "user_response": user_response,
-            }
+        return (
+            "You are Saint's response-assessment layer. The user was given a goal and "
+            "some evidence, then asked a question. Assess whether their reply shows "
+            "evidence-backed understanding, a partial guess, or needs clarification. "
+            "Return ONLY a JSON object (no prose, no markdown fences) matching this "
+            "exact shape:\n\n"
+            '{\n'
+            '  "status": "<one of: understood, partial, needs_clarification>",\n'
+            '  "understanding": "<one sentence describing what the user seems to '
+            'understand, based on THEIR actual wording>",\n'
+            '  "evidence_gap": ["<specific missing evidence, if any>"],\n'
+            '  "recommended_action": "<a concrete next step, snake_case-style label '
+            'or short phrase>"\n'
+            '}\n\n'
+            f"Goal: {context.goal}\n"
+            f"Current step: {context.current_step}\n"
+            f"Evidence available: {', '.join(context.evidence) if context.evidence else 'none'}\n"
+            f'User response: "{user_response}"\n'
         )
 
     @staticmethod
@@ -379,7 +426,7 @@ class GroqProvider:
 
     def __init__(self, settings: Settings, transport: httpx.AsyncBaseTransport | None = None) -> None:
         self._api_key = settings.groq_api_key.strip()
-        self._model = settings.llm_model or "llama-3.1-8b-instant"
+        self._model = settings.groq_model or "llama-3.1-8b-instant"
         self._base_url = (settings.groq_base_url or settings.llm_base_url or "https://api.groq.com/openai/v1/chat/completions").rstrip("/")
         self._timeout = 15.0
         self._transport = transport
@@ -443,43 +490,69 @@ class GroqProvider:
 
     @staticmethod
     def _build_goal_prompt(request: GoalRequest) -> str:
-        return json.dumps(
-            {
-                "original_input": request.goal,
-                "intent": request.intent.value,
-                "desired_outcome": "evidence-backed explanation",
-                "required_evidence": ["context", "relationships", "evidence"],
-                "confidence": 0.8,
-            }
+        return (
+            "You are Saint's goal-interpretation layer. Read the user's natural-language "
+            "goal and return ONLY a JSON object (no prose, no markdown fences) matching "
+            "this exact shape:\n\n"
+            '{\n'
+            '  "original_input": "<the user goal, verbatim>",\n'
+            '  "intent": "<one of: learn, explore, act>",\n'
+            '  "target": "<the specific thing the user cares about, e.g. a dashboard, '
+            'dataset, or pipeline name mentioned or implied in the goal>",\n'
+            '  "desired_outcome": "<a one-sentence outcome specific to THIS goal, '
+            'not a generic phrase>",\n'
+            '  "required_actions": ["<3-5 concrete steps specific to this goal>"],\n'
+            '  "required_evidence": ["<specific evidence types needed, e.g. '
+            '\'upstream pipeline logs\', \'freshness metadata\'>"],\n'
+            '  "confidence": <float 0-1>\n'
+            '}\n\n'
+            f'User goal: "{request.goal}"\n'
+            f'User-selected intent (may be "unsure"): "{request.intent.value}"\n\n'
+            "Base your interpretation on the actual wording and subject of the goal above. "
+            "Do not reuse example values from this prompt in your answer."
         )
 
     @staticmethod
-    def _build_context_prompt(context: ContextPackage | dict[str, Any]) -> str:
+    def _build_context_prompt(context: "ContextPackage | dict") -> str:
         if isinstance(context, dict):
             context = ContextPackage(**context)
-        return json.dumps(
-            {
-                "goal": context.goal,
-                "current_entity": context.current_entity,
-                "evidence": context.evidence,
-                "relationships": context.relationships,
-                "next_action": context.next_action,
-            }
+        return (
+            "You are Saint's context-explanation layer. Below is structured context "
+            "that Saint's core has already discovered from DataHub. Explain it to the "
+            "user in 2-4 plain-English sentences. Do not invent facts that are not in "
+            "the data below. Do not add a preamble like 'Here is the explanation' — "
+            "just write the explanation directly.\n\n"
+            f"Goal: {context.goal}\n"
+            f"Current entity: {context.current_entity or 'none'}\n"
+            f"Evidence: {', '.join(context.evidence) if context.evidence else 'none'}\n"
+            f"Related assets: {', '.join(context.relationships) if context.relationships else 'none'}\n"
+            f"Suggested next action: {context.next_action or 'none'}\n"
         )
+
 
     @staticmethod
-    def _build_assessment_prompt(context: AssessmentContext | dict[str, Any], user_response: str) -> str:
+    def _build_assessment_prompt(context: "AssessmentContext | dict", user_response: str) -> str:
         if isinstance(context, dict):
             context = AssessmentContext(**context)
-        return json.dumps(
-            {
-                "goal": context.goal,
-                "current_step": context.current_step,
-                "evidence": context.evidence,
-                "user_response": user_response,
-            }
+        return (
+            "You are Saint's response-assessment layer. The user was given a goal and "
+            "some evidence, then asked a question. Assess whether their reply shows "
+            "evidence-backed understanding, a partial guess, or needs clarification. "
+            "Return ONLY a JSON object (no prose, no markdown fences) matching this "
+            "exact shape:\n\n"
+            '{\n'
+            '  "status": "<one of: understood, partial, needs_clarification>",\n'
+            '  "understanding": "<one sentence describing what the user seems to '
+            'understand, based on THEIR actual wording>",\n'
+            '  "evidence_gap": ["<specific missing evidence, if any>"],\n'
+            '  "recommended_action": "<a concrete next step, snake_case-style label '
+            'or short phrase>"\n'
+            '}\n\n'
+            f"Goal: {context.goal}\n"
+            f"Current step: {context.current_step}\n"
+            f"Evidence available: {', '.join(context.evidence) if context.evidence else 'none'}\n"
+            f'User response: "{user_response}"\n'
         )
-
     @staticmethod
     def _extract_text(data: dict[str, Any]) -> str:
         choices = data.get("choices") or []
@@ -513,10 +586,23 @@ class GroqProvider:
 
 
 def build_llm_adapter(settings: Settings) -> LLMAdapter:
-    provider = settings.llm_provider.lower().strip()
-    if provider == "gemini" and settings.gemini_api_key.strip():
-        return StructuredLLMAdapter(provider=GeminiProvider(settings), fallback=MockLLMAdapter())
-    if provider == "groq" and settings.groq_api_key.strip():
-        return StructuredLLMAdapter(provider=GroqProvider(settings), fallback=MockLLMAdapter())
+    has_groq = bool(settings.groq_api_key.strip())
+    has_gemini = bool(settings.gemini_api_key.strip())
+ 
+    # Innermost fallback is always Mock, so the app never crashes even if
+    # both real providers are unavailable.
+    gemini_layer: LLMAdapter = (
+        StructuredLLMAdapter(provider=GeminiProvider(settings), fallback=MockLLMAdapter())
+        if has_gemini
+        else MockLLMAdapter()
+    )
+ 
+    if has_groq:
+        # Groq is primary; if it fails, fall through to the Gemini layer
+        # (which itself falls through to Mock if Gemini also fails).
+        return StructuredLLMAdapter(provider=GroqProvider(settings), fallback=gemini_layer)
+ 
+    if has_gemini:
+        return gemini_layer
+ 
     return StructuredLLMAdapter(provider=MockLLMAdapter(), fallback=MockLLMAdapter())
-
