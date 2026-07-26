@@ -1,9 +1,11 @@
 import argparse
 import asyncio
+import logging
 from typing import Sequence
 
 from rich import box
 from rich.console import Console
+from rich.markup import escape
 from rich.panel import Panel
 from rich.prompt import Confirm, IntPrompt, Prompt
 from rich.rule import Rule
@@ -18,8 +20,7 @@ from backend.app.orchestration import SaintOrchestrator
 
 
 # ---------------------------------------------------------------------------
-# Theme: one place to control Saint's visual identity. Change colors here,
-# not scattered across the file.
+# Theme: one place to control Saint's visual identity.
 # ---------------------------------------------------------------------------
 SAINT_THEME = Theme(
     {
@@ -38,10 +39,24 @@ console = Console(theme=SAINT_THEME)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    logging.basicConfig(level=logging.WARNING, format="[%(name)s] %(message)s")
+
     parser = argparse.ArgumentParser(prog="saint", description="Context-aware path to understanding and action.")
-    parser.add_argument("command", nargs="?", choices=("demo", "init", "doctor", "version"), default="run")
+    parser.add_argument(
+        "command",
+        nargs="?",
+        choices=("demo", "init", "doctor", "version"),
+        default=None,
+    )
+    parser.add_argument(
+        "--live",
+        action="store_true",
+        help="For 'demo': use your configured DataHub connection instead of built-in mock data.",
+    )
     args = parser.parse_args(argv)
 
+    if args.command is None:
+        return run_interactive()
     if args.command == "version":
         console.print("[saint.brand]Saint[/saint.brand] 0.1.0")
         return 0
@@ -50,19 +65,27 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "doctor":
         return run_doctor()
     if args.command == "demo":
-        return run_demo()
+        return run_demo(live=args.live)
+
+    # Unreachable: argparse already restricts choices above.
     return run_interactive()
 
 
-def run_demo() -> int:
-    _render_header("Demo mode")
-    console.print("[saint.muted]Using safe built-in context. No Docker or DataHub credentials are required.[/saint.muted]\n")
+def run_demo(live: bool = False) -> int:
+    _render_header("Demo mode" + (" (live DataHub)" if live else ""))
+    if live:
+        console.print("[saint.muted]Using your configured DataHub connection for live context.[/saint.muted]\n")
+        settings = Settings()
+    else:
+        console.print("[saint.muted]Using safe built-in context. No Docker or DataHub credentials are required.[/saint.muted]\n")
+        settings = Settings(datahub_provider="mock")
+
     return _run_flow(
         GoalRequest(
             goal="I want to understand why the revenue dashboard changed",
             intent=Intent.explore,
         ),
-        Settings(datahub_provider="mock"),
+        settings,
         demo=True,
     )
 
@@ -149,6 +172,7 @@ def _render_steps(steps, show_purpose: bool = True) -> None:
         if show_purpose:
             console.print(f"   {step.purpose}")
         console.print(f"   [saint.muted]Next: {step.user_action}[/saint.muted]")
+        console.print()
 
 
 def _assess_path(demo: bool) -> PathAssessment:
@@ -163,11 +187,12 @@ def run_init() -> int:
     _render_header("Initialize Saint")
     console.print("[saint.dim]Saint keeps configuration in environment variables and never writes credentials to the repository.[/saint.dim]\n")
     console.print("For a direct Agent Context Kit connection, install the optional extra:")
-    console.print('  [saint.label]python -m pip install "saint[agent-context]"[/saint.label]')
+    console.print("  " + escape('python -m pip install "saint[agent-context]"'), style="saint.label")
     console.print("  [saint.label]DATAHUB_PROVIDER[/saint.label]=agent_context")
     console.print("  [saint.label]DATAHUB_GMS_URL[/saint.label]=https://<your-datahub-host>")
     console.print("  [saint.label]DATAHUB_GMS_TOKEN[/saint.label]=<personal-access-token>")
     console.print("\n[saint.muted]The base demo works without DataHub, Docker, MCP, or credentials.[/saint.muted]")
+    console.print("[saint.muted]Run 'saint demo --live' to use your configured DataHub connection instead of mock data.[/saint.muted]")
     return 0
 
 
@@ -184,12 +209,22 @@ def run_doctor() -> int:
     checks.add_row("Configured", "[saint.ok]✓ yes[/saint.ok]" if status.configured else "[saint.error]✗ no[/saint.error]")
     checks.add_row("Reachable", "[saint.ok]✓ yes[/saint.ok]" if status.reachable else "[saint.error]✗ no[/saint.error]")
     checks.add_row("Details", status.detail)
+    checks.add_row("LLM provider", settings.llm_provider)
+    checks.add_row("Groq key set", "[saint.ok]✓ yes[/saint.ok]" if settings.groq_api_key.strip() else "[saint.dim]— no[/saint.dim]")
+    checks.add_row("Gemini key set", "[saint.ok]✓ yes[/saint.ok]" if settings.gemini_api_key.strip() else "[saint.dim]— no[/saint.dim]")
     console.print(checks)
     return 0 if status.reachable else 1
 
 
 def _render_header(mode: str) -> None:
-    console.print(Panel("[saint.brand]SAINT[/saint.brand]\n[saint.dim]Context-aware path to insight[/saint.dim]", subtitle=mode, box=box.HEAVY, border_style="saint.brand"))
+    console.print(
+        Panel(
+            "[saint.brand]SAINT[/saint.brand]\n[saint.dim]Context-aware path to insight[/saint.dim]",
+            subtitle=mode,
+            box=box.HEAVY,
+            border_style="saint.brand",
+        )
+    )
 
 
 if __name__ == "__main__":
