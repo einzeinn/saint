@@ -2,19 +2,28 @@
 
 Saint is an adaptive, context-driven agent that turns user goals into contextual paths toward understanding or action.
 
-Saint's primary direction is an installable interactive terminal application. The web API and frontend remain as a secondary compatibility surface while the terminal experience becomes the main product.
+Saint's primary direction is an installable interactive terminal application. A FastAPI surface remains as a secondary compatibility API for existing integrations.
 
 ## Project Structure
 
 ```text
-docs/              Product, architecture, design, roadmap, and RFC documents
+docs/              Product, architecture, design, roadmap, deployment, and judge setup docs
 backend/           Saint Core, CLI, API, orchestration, domain models, adapters
-frontend/          Secondary web prototype and compatibility surface
-tests/              Backend and core-focused tests
-docs/               Product direction, deployment strategy, RFCs, and judge setup
+tests/             Backend and core-focused tests
 ```
 
 ## Run Saint
+
+macOS / Linux:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -e .
+saint demo
+```
+
+Windows (PowerShell):
 
 ```powershell
 python -m venv .venv
@@ -27,19 +36,19 @@ saint demo
 
 For an interactive session:
 
-```powershell
+```bash
 saint
 ```
 
 For environment diagnostics:
 
-```powershell
+```bash
 saint doctor
 ```
 
 For connected DataHub setup guidance:
 
-```powershell
+```bash
 saint init
 ```
 
@@ -49,7 +58,7 @@ See [docs/deployment.md](docs/deployment.md), [docs/JudgeSetup.md](docs/JudgeSet
 
 The FastAPI surface can still be run for existing integrations:
 
-```powershell
+```bash
 uvicorn backend.app.main:app --reload
 ```
 
@@ -57,18 +66,4 @@ The health endpoint is available at:
 
 ```text
 GET http://127.0.0.1:8000/health
-```
-
-The secondary frontend prototype can still be run in a second terminal:
-
-```powershell
-cd frontend
-npm install
-npm run dev
-```
-
-Then open:
-
-```text
-http://127.0.0.1:5173
 ```

@@ -166,3 +166,46 @@ def test_mcp_entity_results_are_deduplicated() -> None:
         "urn:li:dashboard:orders",
     ]
     assert entities[0].metadata == {"owner": "data-platform", "quality": "tracked"}
+
+
+def test_metadata_summarizes_nested_ownership_payload_into_readable_names() -> None:
+    record = {
+        "urn": "urn:li:dataset:logging_events",
+        "name": "logging_events",
+        "type": "DATASET",
+        "owner": {
+            "owners": [
+                {
+                    "owner": {
+                        "urn": "urn:li:corpuser:jdoe",
+                        "properties": {"displayName": "John Doe"},
+                    },
+                    "type": "DATAOWNER",
+                },
+                {
+                    "owner": {
+                        "urn": "urn:li:corpuser:datahub",
+                        "properties": {"displayName": "DataHub"},
+                    },
+                    "type": "DATAOWNER",
+                },
+            ]
+        },
+    }
+
+    entities = DataHubMCPAdapter._entities_from_search({"results": [record]})
+
+    assert entities[0].metadata["owner"] == "John Doe, DataHub"
+
+
+def test_metadata_omits_empty_or_unresolvable_nested_values() -> None:
+    record = {
+        "urn": "urn:li:glossaryTerm:CustomerAccount",
+        "name": "CustomerAccount",
+        "type": "GLOSSARY_TERM",
+        "owner": {"owners": []},
+    }
+
+    entities = DataHubMCPAdapter._entities_from_search({"results": [record]})
+
+    assert "owner" not in entities[0].metadata

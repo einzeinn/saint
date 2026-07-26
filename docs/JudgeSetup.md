@@ -7,11 +7,10 @@ This is the reproducible, read-only setup for the hackathon demo. It runs the Sa
 ## Prerequisites
 
 - Python 3.11 or newer
-- Node.js 20 or newer
 
 ## Install Saint
 
-```powershell
+```bash
 python -m pip install saint
 ```
 
@@ -19,7 +18,7 @@ For repository-based judging, use `python -m pip install .` instead.
 
 ## Run the demo
 
-```powershell
+```bash
 saint demo
 ```
 
@@ -45,6 +44,16 @@ Install the optional integration with `python -m pip install "saint[agent-contex
 
 For a local OSS DataHub quickstart, the bundled bootstrap pack can be loaded with Saint's compatibility loader. The standard `datahub datapack load bootstrap` command may fail on mixed MCE/MCP-wrapper packs in some CLI versions.
 
+macOS / Linux:
+
+```bash
+export DATAHUB_GMS_URL="http://localhost:8080"
+export DATAHUB_GMS_TOKEN="<personal-access-token>"
+python scripts/load_datapack.py "$HOME/.datahub/datapack-cache/<bootstrap-pack>.json"
+```
+
+Windows (PowerShell):
+
 ```powershell
 $env:DATAHUB_GMS_URL="http://localhost:8080"
 $env:DATAHUB_GMS_TOKEN="<personal-access-token>"
@@ -55,7 +64,7 @@ The loader supports both event shapes and reports the number of loaded and skipp
 
 ## Interactive mode
 
-```powershell
+```bash
 saint
 ```
 

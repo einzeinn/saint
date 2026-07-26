@@ -368,13 +368,59 @@ class DataHubMCPAdapter:
             "freshness": ("freshness", "freshnessStatus"),
             "quality": ("quality", "qualityStatus"),
             "domain": ("domain", "domainName"),
-            "documentation": ("documentation", "description"),
+            "documentation": (
+                "documentation",
+                "description",
+                "properties.description",
+                "definition",
+                "properties.definition",
+            ),
         }
         for key, paths in aliases.items():
             value = DataHubMCPAdapter._value(record, *paths)
             if value not in (None, ""):
-                metadata[key] = value
+                summarized = DataHubMCPAdapter._summarize_value(value)
+                if summarized and summarized != "—":
+                    metadata[key] = summarized
         return metadata
+
+    @staticmethod
+    def _summarize_value(value: Any) -> str:
+        """Render a raw DataHub API value as short, human-readable text.
+
+        DataHub's ownership/search payloads are deeply nested (owner lists,
+        corpuser URNs, ownership-type URNs, ...). Rendering that structure
+        with ``str(value)`` dumps the whole Python repr into the UI, so this
+        collapses common shapes down to the names/labels a person cares about.
+        """
+        if isinstance(value, str):
+            return value
+        if isinstance(value, (int, float, bool)):
+            return str(value)
+        if isinstance(value, dict):
+            owners = value.get("owners")
+            if isinstance(owners, list):
+                names: list[str] = []
+                for item in owners:
+                    owner = item.get("owner", {}) if isinstance(item, dict) else {}
+                    props = owner.get("properties", {}) if isinstance(owner, dict) else {}
+                    display = props.get("displayName") if isinstance(props, dict) else None
+                    label = display or owner.get("urn")
+                    if label:
+                        names.append(str(label))
+                deduped = list(dict.fromkeys(names))
+                return ", ".join(deduped) if deduped else "—"
+            for key in ("displayName", "name", "label", "value", "urn"):
+                candidate = value.get(key)
+                if isinstance(candidate, (str, int, float)):
+                    return str(candidate)
+            return "—"
+        if isinstance(value, list):
+            parts = [DataHubMCPAdapter._summarize_value(item) for item in value]
+            parts = [part for part in parts if part and part != "—"]
+            deduped = list(dict.fromkeys(parts))
+            return ", ".join(deduped) if deduped else "—"
+        return str(value)
 
     def _headers(self) -> dict[str, str]:
         headers = {
