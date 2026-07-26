@@ -682,9 +682,22 @@ class AgentContextAdapter:
 
         client = self._client()
         with DataHubContext(client):
-            result = search(query=query, num_results=10)
-            records = DataHubMCPAdapter._records(result)
-            entities = DataHubMCPAdapter._entities_from_search(result)
+            entity_filter = self._infer_entity_type_filter(query)
+
+            def attempt(search_query: str, use_filter: bool) -> tuple[Any, list[ContextEntity]]:
+                filter_arg = (
+                    f"entity_type = {entity_filter}" if use_filter and entity_filter else None
+                )
+                search_result = search(query=search_query, filter=filter_arg, num_results=10)
+                return search_result, DataHubMCPAdapter._entities_from_search(search_result)
+
+            result, entities = attempt(query, use_filter=True)
+            if not entities and entity_filter:
+                # The type guess may be wrong, or nothing of that type matched
+                # this query; fall back to an unfiltered search rather than
+                # returning nothing.
+                result, entities = attempt(query, use_filter=False)
+
             if not entities:
                 stopwords = {"understand", "explain", "find", "show", "what", "when", "where", "why", "how", "the", "from", "with"}
                 keywords = [
@@ -692,11 +705,13 @@ class AgentContextAdapter:
                     for word in re.findall(r"[a-zA-Z0-9_]+", query.lower())
                     if len(word) >= 4 and word not in stopwords
                 ]
-                fallback_query = "/q " + " OR ".join(keywords[-6:])
                 if keywords:
-                    result = search(query=fallback_query, num_results=10)
-                    records = DataHubMCPAdapter._records(result)
-                    entities = DataHubMCPAdapter._entities_from_search(result)
+                    fallback_query = "/q " + " OR ".join(keywords[-6:])
+                    result, entities = attempt(fallback_query, use_filter=True)
+                    if not entities and entity_filter:
+                        result, entities = attempt(fallback_query, use_filter=False)
+
+            records = DataHubMCPAdapter._records(result)
             urns = [
                 str(DataHubMCPAdapter._value(record, "urn", "entityUrn", "entity.urn"))
                 for record in records
@@ -705,6 +720,34 @@ class AgentContextAdapter:
             details = get_entities(urns=urns) if urns else []
         _enrich_entity_map(entities, details)
         return entities
+
+    @staticmethod
+    def _infer_entity_type_filter(goal: str) -> str | None:
+        """Best-effort guess at which DataHub entity type a goal is about.
+
+        A generic full-text search over a mixed catalog can surface entities
+        that merely mention the right words rather than the entities the
+        person actually asked about -- e.g. asking to see "all datasets" can
+        return Document write-ups or ML feature keys that reference the word
+        "dataset" instead of the dataset entities themselves. When the goal
+        clearly names a DataHub entity type, that type is searched first;
+        callers still fall back to an unfiltered search if this comes up
+        empty, so a wrong guess here never loses results it would otherwise
+        have found.
+        """
+        text = goal.lower()
+        keyword_to_type: tuple[tuple[tuple[str, ...], str], ...] = (
+            (("dashboard",), "dashboard"),
+            (("chart", "visualization", "visualisation"), "chart"),
+            (("pipeline", "dag", "orchestrat", " job", "data job"), "dataJob"),
+            (("glossary",), "glossaryTerm"),
+            (("domain",), "domain"),
+            (("dataset", "table", "data source"), "dataset"),
+        )
+        for keywords, entity_type in keyword_to_type:
+            if any(keyword in text for keyword in keywords):
+                return entity_type
+        return None
 
 
 def _enrich_entity_map(entities: list[ContextEntity], result: Any) -> None:

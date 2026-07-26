@@ -2,7 +2,12 @@ import pytest
 import httpx
 from fastapi.testclient import TestClient
 
-from backend.app.adapters.datahub import DataHubMCPAdapter, MockDataHubAdapter, build_datahub_adapter
+from backend.app.adapters.datahub import (
+    AgentContextAdapter,
+    DataHubMCPAdapter,
+    MockDataHubAdapter,
+    build_datahub_adapter,
+)
 from backend.app.config import Settings
 from backend.app.domain import GoalInterpretation, Intent
 from backend.app.main import app
@@ -209,3 +214,18 @@ def test_metadata_omits_empty_or_unresolvable_nested_values() -> None:
     entities = DataHubMCPAdapter._entities_from_search({"results": [record]})
 
     assert "owner" not in entities[0].metadata
+
+
+@pytest.mark.parametrize(
+    ("goal", "expected_type"),
+    [
+        ("I want to see the table for all datasets I have now", "dataset"),
+        ("Show me the revenue dashboard", "dashboard"),
+        ("Explain the daily ingestion pipeline", "dataJob"),
+        ("What glossary terms exist for revenue", "glossaryTerm"),
+        ("List every domain in the catalog", "domain"),
+        ("How does the system generally work", None),
+    ],
+)
+def test_infer_entity_type_filter_matches_explicit_entity_mentions(goal, expected_type) -> None:
+    assert AgentContextAdapter._infer_entity_type_filter(goal) == expected_type
