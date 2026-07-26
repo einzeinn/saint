@@ -60,7 +60,7 @@ $env:DATAHUB_GMS_TOKEN="<personal-access-token>"
 python scripts/load_datapack.py "$env:USERPROFILE\.datahub\datapack-cache\<bootstrap-pack>.json"
 ```
 
-The loader supports both event shapes and reports the number of loaded and skipped records.
+The loader supports both event shapes, skips individual records the connected GMS rejects (e.g. an aspect it doesn't recognize) instead of aborting the whole file, and reports the number of loaded and skipped records.
 
 ## Interactive mode
 

@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 
+from datahub.configuration.common import OperationalError
 from datahub.emitter.rest_emitter import DatahubRestEmitter
 from datahub.emitter.mcp import MetadataChangeProposalWrapper
 from datahub.metadata.com.linkedin.pegasus2avro.mxe import MetadataChangeEvent
@@ -39,13 +40,21 @@ def main() -> int:
                 emitter.emit_mcp(proposal)
             else:
                 raise ValueError("unknown DataHub event shape")
-        except (TypeError, ValueError, KeyError):
+        except (TypeError, ValueError, KeyError) as exc:
             skipped += 1
-            print(f"Skipped malformed record at index {index}.")
+            print(f"Skipped malformed record at index {index}: {exc}")
+            continue
+        except OperationalError as exc:
+            # The server rejected this specific record (e.g. an aspect the
+            # connected GMS version doesn't recognize, a transient network
+            # error). Skip it and keep going instead of losing progress on
+            # every remaining record in the file.
+            skipped += 1
+            print(f"Skipped record at index {index} rejected by server: {exc}")
             continue
         emitted += 1
 
-    print(f"Loaded {emitted} metadata events into {gms_url}; skipped {skipped} malformed records.")
+    print(f"Loaded {emitted} metadata events into {gms_url}; skipped {skipped} records.")
     return 0
 
 
