@@ -95,9 +95,9 @@ def test_groq_provider_calls_http_api_and_parses_result() -> None:
 def test_gemini_provider_explain_and_assess_via_http() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         body = request.read().decode()
-        if '"explain_context"' in body:
-            return httpx.Response(200, json={"candidates": [{"content": {"parts": [{"text": "This step looks at the upstream dataset and dashboard relationship."}]}}]})
-        return httpx.Response(200, json={"candidates": [{"content": {"parts": [{"text": '{"status":"partial","understanding":"The user inferred a likely cause.","evidence_gap":["No verified evidence was cited."],"recommended_action":"inspect_recent_upstream_activity"}'}]}}]})
+        if "user_response" in body:
+            return httpx.Response(200, json={"candidates": [{"content": {"parts": [{"text": '{"status":"partial","understanding":"The user inferred a likely cause.","evidence_gap":["No verified evidence was cited."],"recommended_action":"inspect_recent_upstream_activity"}'}]}}]})
+        return httpx.Response(200, json={"candidates": [{"content": {"parts": [{"text": "This step looks at the upstream dataset and dashboard relationship."}]}}]})
 
     provider = GeminiProvider(
         Settings(llm_provider="gemini", gemini_api_key="demo-key", llm_base_url="https://example.test/models"),
