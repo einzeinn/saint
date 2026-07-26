@@ -5,9 +5,12 @@ from fastapi import HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app.adapters.datahub import build_datahub_adapter
-from backend.app.adapters.llm import MockLLMAdapter
+from backend.app.adapters.llm import build_llm_adapter
 from backend.app.config import get_settings
 from backend.app.domain import (
+    AssessmentContext,
+    AssessmentResult,
+    ContextPackage,
     ContextualPath,
     DataHubIntegrationStatus,
     GoalInterpretation,
@@ -39,7 +42,7 @@ app.add_middleware(
 )
 
 orchestrator = SaintOrchestrator(
-    llm=MockLLMAdapter(),
+    llm=build_llm_adapter(settings),
     datahub=build_datahub_adapter(settings),
 )
 
@@ -63,6 +66,21 @@ async def interpret_goal(request: GoalRequest) -> GoalInterpretation:
 @app.post("/goals/contextual-path", response_model=ContextualPath)
 async def contextual_path(request: GoalRequest) -> ContextualPath:
     return await orchestrator.generate_contextual_path(request)
+
+
+@app.post("/llm/explain-context")
+async def explain_context(request: ContextPackage) -> str:
+    return await orchestrator._llm.explain_context(request)
+
+
+@app.post("/llm/assess-response", response_model=AssessmentResult)
+async def assess_response(request: dict[str, object]) -> AssessmentResult:
+    context_payload = request.get("context")
+    user_response = request.get("user_response")
+    if not isinstance(context_payload, dict) or not isinstance(user_response, str):
+        raise HTTPException(status_code=422, detail="context and user_response are required")
+    context = AssessmentContext.model_validate(context_payload)
+    return await orchestrator._llm.assess_response(context, user_response)
 
 
 @app.get("/integrations/datahub/status", response_model=DataHubIntegrationStatus)

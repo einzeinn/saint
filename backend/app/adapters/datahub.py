@@ -677,5 +677,7 @@ def build_datahub_adapter(settings: Settings) -> DataHubAdapter:
     if provider == "mcp":
         return DataHubMCPAdapter(settings)
     if provider in {"agent_context", "ack", "native"}:
-        return AgentContextAdapter(settings)
+        if settings.datahub_gms_url.strip():
+            return AgentContextAdapter(settings)
+        return MockDataHubAdapter()
     return MockDataHubAdapter()

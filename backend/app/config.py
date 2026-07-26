@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     llm_model: str = "mock-context-guide"
     llm_api_key: str = ""
     llm_base_url: str = ""
+    gemini_api_key: str = ""
+    groq_api_key: str = ""
+    groq_base_url: str = ""
 
     datahub_provider: str = "mock"
     datahub_gms_url: str = "http://localhost:8080"

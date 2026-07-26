@@ -8,7 +8,7 @@ from rich.prompt import Confirm, IntPrompt, Prompt
 from rich.table import Table
 
 from backend.app.adapters.datahub import build_datahub_adapter
-from backend.app.adapters.llm import MockLLMAdapter
+from backend.app.adapters.llm import build_llm_adapter
 from backend.app.config import Settings
 from backend.app.domain import GoalRequest, Intent, PathAssessment
 from backend.app.orchestration import SaintOrchestrator
@@ -62,7 +62,7 @@ def run_interactive() -> int:
 
 def _run_flow(request: GoalRequest, settings: Settings, demo: bool = False) -> int:
     orchestrator = SaintOrchestrator(
-        llm=MockLLMAdapter(),
+        llm=build_llm_adapter(settings),
         datahub=build_datahub_adapter(settings),
     )
     interpretation = asyncio.run(orchestrator.interpret_goal(request))

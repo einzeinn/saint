@@ -17,12 +17,37 @@ class GoalRequest(BaseModel):
 
 
 class GoalInterpretation(BaseModel):
-    original_goal: str
+    original_goal: str = ""
+    original_input: str | None = None
     intent: Intent
     desired_outcome: str
-    required_actions: list[str]
+    required_actions: list[str] = Field(default_factory=list)
     required_capabilities: list[str] = Field(default_factory=list)
     constraints: list[str] = Field(default_factory=list)
+    target: str | None = None
+    required_evidence: list[str] = Field(default_factory=list)
+    confidence: float = 0.75
+
+
+class ContextPackage(BaseModel):
+    goal: str
+    current_entity: str | None = None
+    evidence: list[str] = Field(default_factory=list)
+    relationships: list[str] = Field(default_factory=list)
+    next_action: str | None = None
+
+
+class AssessmentContext(BaseModel):
+    goal: str
+    current_step: str | None = None
+    evidence: list[str] = Field(default_factory=list)
+
+
+class AssessmentResult(BaseModel):
+    status: str = "partial"
+    understanding: str = ""
+    evidence_gap: list[str] = Field(default_factory=list)
+    recommended_action: str | None = None
 
 
 class ContextEntity(BaseModel):

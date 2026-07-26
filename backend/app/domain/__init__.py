@@ -1,5 +1,8 @@
 from backend.app.domain.models import (
+    AssessmentContext,
+    AssessmentResult,
     ContextEntity,
+    ContextPackage,
     DataHubContextDiscovery,
     DataHubIntegrationStatus,
     ContextualPath,
@@ -14,7 +17,10 @@ from backend.app.domain.models import (
 )
 
 __all__ = [
+    "AssessmentContext",
+    "AssessmentResult",
     "ContextEntity",
+    "ContextPackage",
     "DataHubContextDiscovery",
     "DataHubIntegrationStatus",
     "ContextualPath",
