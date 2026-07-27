@@ -392,6 +392,23 @@ class DataHubMCPAdapter:
             return {"urns": [urn]}
         return {"urn": urn}
 
+    @staticmethod
+    def _readable_urn_fallback(urn: str) -> str:
+        """Best-effort readable name when no title/name field is present.
+
+        DataHub URNs for platform-native entities look like
+        ``urn:li:dashboard:(looker,baz)``. Falling back to the raw URN tail
+        prints the surrounding punctuation as-is (``(looker,baz)``); this
+        pulls out the platform and identifier and renders them as
+        ``baz (looker)`` instead.
+        """
+        tail = str(urn).rsplit(":", 1)[-1]
+        match = re.match(r"^\((?:urn:li:dataPlatform:)?([^,]+),([^,)]+)", tail)
+        if match:
+            platform, identifier = match.group(1), match.group(2)
+            return f"{identifier} ({platform})"
+        return tail
+
     @classmethod
     def _entities_from_search(cls, result: Any) -> list[ContextEntity]:
         records = cls._records(result)
@@ -400,7 +417,16 @@ class DataHubMCPAdapter:
             urn = cls._value(record, "urn", "entityUrn", "entity.urn")
             if not urn:
                 continue
-            name = cls._value(record, "name", "entityName", "entity.name", "properties.name") or urn.rsplit(":", 1)[-1]
+            name = cls._value(
+                record,
+                "name",
+                "title",
+                "entityName",
+                "entity.name",
+                "properties.name",
+                "properties.title",
+                "info.title",
+            ) or cls._readable_urn_fallback(urn)
             entity_type = cls._value(record, "entityType", "type", "entity.type") or "unknown"
             entities.append(
                 ContextEntity(

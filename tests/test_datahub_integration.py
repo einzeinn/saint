@@ -229,3 +229,26 @@ def test_metadata_omits_empty_or_unresolvable_nested_values() -> None:
 )
 def test_infer_entity_type_filter_matches_explicit_entity_mentions(goal, expected_type) -> None:
     assert AgentContextAdapter._infer_entity_type_filter(goal) == expected_type
+
+
+def test_entities_from_search_prefers_title_field_for_dashboards() -> None:
+    record = {
+        "urn": "urn:li:dashboard:(looker,baz)",
+        "type": "DASHBOARD",
+        "properties": {"title": "Baz Revenue Overview"},
+    }
+
+    entities = DataHubMCPAdapter._entities_from_search({"results": [record]})
+
+    assert entities[0].name == "Baz Revenue Overview"
+
+
+def test_entities_from_search_falls_back_to_readable_platform_id_without_a_title() -> None:
+    record = {
+        "urn": "urn:li:dashboard:(looker,baz)",
+        "type": "DASHBOARD",
+    }
+
+    entities = DataHubMCPAdapter._entities_from_search({"results": [record]})
+
+    assert entities[0].name == "baz (looker)"
