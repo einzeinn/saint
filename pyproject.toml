@@ -29,3 +29,6 @@ saint = "backend.app.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["backend*"]
+
+[project.entry-points."datahub_agent_context.skills"]
+saint_investigator = "skills.saint_investigator:SaintInvestigatorSkill"
