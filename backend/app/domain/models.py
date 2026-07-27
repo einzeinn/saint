@@ -1,5 +1,5 @@
 from enum import StrEnum
-from typing import Any
+from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 
@@ -50,6 +50,21 @@ class AssessmentResult(BaseModel):
     recommended_action: str | None = None
 
 
+# NEW: Context for final synthesis
+class SynthesisContext(BaseModel):
+    goal: str
+    steps: list["PathStep"]
+    entities: list["ContextEntity"]
+    assessment_results: list[AssessmentResult] | None = None
+    context_notes: list[str] = Field(default_factory=list)
+
+
+# NEW: Result of final synthesis
+class SynthesisResult(BaseModel):
+    synthesis: str
+    confidence: float | None = None
+
+
 class ContextEntity(BaseModel):
     urn: str
     name: str
@@ -75,6 +90,7 @@ class ContextualPath(BaseModel):
     outcome: str
     context_source: str = "unknown"
     context_notes: list[str] = Field(default_factory=list)
+    synthesis: str | None = None  # NEW: stored synthesis result
 
 
 class PrototypeSession(BaseModel):
@@ -113,3 +129,7 @@ class DataHubContextDiscovery(BaseModel):
     source: str
     entities: list[ContextEntity]
     notes: list[str] = Field(default_factory=list)
+
+
+# Rebuild forward references after class definitions
+SynthesisContext.model_rebuild()

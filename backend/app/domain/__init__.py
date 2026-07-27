@@ -1,19 +1,21 @@
-from backend.app.domain.models import (
+from .models import (
     AssessmentContext,
     AssessmentResult,
     ContextEntity,
     ContextPackage,
+    ContextualPath,
     DataHubContextDiscovery,
     DataHubIntegrationStatus,
-    ContextualPath,
     GoalInterpretation,
     GoalRequest,
     Intent,
+    PathAssessment,
     PathStep,
     PrototypeSession,
     SessionConfirmation,
     StepSelection,
-    PathAssessment,
+    SynthesisContext,      # <-- tambahkan
+    SynthesisResult,       # <-- tambahkan (opsional, tapi aman)
 )
 
 __all__ = [
@@ -21,15 +23,17 @@ __all__ = [
     "AssessmentResult",
     "ContextEntity",
     "ContextPackage",
+    "ContextualPath",
     "DataHubContextDiscovery",
     "DataHubIntegrationStatus",
-    "ContextualPath",
     "GoalInterpretation",
     "GoalRequest",
     "Intent",
+    "PathAssessment",
     "PathStep",
     "PrototypeSession",
     "SessionConfirmation",
     "StepSelection",
-    "PathAssessment",
+    "SynthesisContext",
+    "SynthesisResult",
 ]

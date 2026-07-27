@@ -10,6 +10,7 @@ from backend.app.domain import (
     Intent,
     PathAssessment,
     PathStep,
+    SynthesisContext,   # NEW
 )
 
 
@@ -95,6 +96,7 @@ class SaintOrchestrator:
             outcome=interpretation.desired_outcome,
             context_source=discovery.source,
             context_notes=discovery.notes,
+            synthesis=None,   # NEW: initial empty
         )
 
     @staticmethod
@@ -167,6 +169,8 @@ class SaintOrchestrator:
         )
         revised.context_notes.append("Path replanned after the user reported that the previous path was not useful.")
         revised.outcome = "A revised contextual path that addresses the user's evidence gap."
+        # NEW: reset synthesis because path changed
+        revised.synthesis = None
         return revised
 
     async def assess_user_response(
@@ -193,4 +197,32 @@ class SaintOrchestrator:
         )
 
         return await self._llm.assess_response(context, user_response)
-    
+
+    # NEW: Synthesize final outcome
+    async def synthesize_final_outcome(self, path: ContextualPath) -> str:
+        """Synthesize a final, evidence-backed outcome from all collected evidence."""
+        # If already synthesized, return cached version
+        if path.synthesis:
+            return path.synthesis
+
+        # Gather all evidence from all steps
+        all_evidence = []
+        for step in path.steps:
+            entities_by_urn = {entity.urn: entity for entity in path.context}
+            step_entities = [entities_by_urn[ref] for ref in step.context_refs if ref in entities_by_urn]
+            for entity in step_entities:
+                for key, value in entity.metadata.items():
+                    if value:
+                        all_evidence.append(f"{key}: {value}")
+
+        # Build synthesis context
+        context = SynthesisContext(
+            goal=path.interpretation.desired_outcome,
+            steps=path.steps,
+            entities=path.context,
+            context_notes=path.context_notes,
+        )
+        synthesis = await self._llm.synthesize_outcome(context)
+        # Cache the result
+        path.synthesis = synthesis
+        return synthesis

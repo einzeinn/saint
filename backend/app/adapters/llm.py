@@ -14,6 +14,8 @@ from backend.app.domain import (
     GoalInterpretation,
     GoalRequest,
     Intent,
+    SynthesisContext,      # NEW
+    SynthesisResult,       # NEW (opsional, tapi kita pakai return string saja)
 )
 
 
@@ -28,6 +30,10 @@ class LLMAdapter(Protocol):
 
     async def assess_response(self, context: AssessmentContext, user_response: str) -> AssessmentResult:
         """Assess a user reply against the current evidence context."""
+
+    # NEW: Synthesize final outcome from all evidence collected along the path
+    async def synthesize_outcome(self, context: SynthesisContext) -> str:
+        """Synthesize a final, evidence-backed outcome statement."""
 
 
 class MockLLMAdapter:
@@ -92,6 +98,24 @@ class MockLLMAdapter:
             understanding="The user response did not yet point to evidence-backed reasoning.",
             evidence_gap=["The response lacks confirmed facts or a concrete evidence reference."],
             recommended_action="clarify_the_observed_change",
+        )
+
+    # NEW: Mock implementation for synthesis
+    async def synthesize_outcome(self, context: SynthesisContext) -> str:
+        # Build a simple summary from available evidence
+        evidence_list = []
+        for entity in context.entities:
+            for key, value in entity.metadata.items():
+                if value:
+                    evidence_list.append(f"{key}: {value}")
+        evidence_text = ", ".join(evidence_list) if evidence_list else "no specific evidence discovered"
+        step_titles = [step.title for step in context.steps]
+        steps_text = ", ".join(step_titles)
+        return (
+            f"Based on the gathered evidence ({evidence_text}), the goal '{context.goal}' "
+            f"can be addressed by following these steps: {steps_text}. "
+            "It is recommended to verify recent upstream changes and check freshness metadata "
+            "to confirm the root cause."
         )
 
     def _infer_intent(self, goal: str) -> Intent:
@@ -211,6 +235,22 @@ class StructuredLLMAdapter:
             )
             return await self._fallback.assess_response(context, user_response)
 
+    # NEW: synthesize_outcome with fallback
+    async def synthesize_outcome(self, context: SynthesisContext) -> str:
+        try:
+            result = await self._provider.synthesize_outcome(context)
+            if isinstance(result, str) and result.strip():
+                return result
+            raise ValueError("provider returned an invalid synthesis")
+        except Exception as exc:
+            logger.warning(
+                "LLM provider '%s' failed on synthesize_outcome (%s); falling back to '%s'",
+                self.provider_name,
+                exc,
+                getattr(self._fallback, "provider_name", "mock"),
+            )
+            return await self._fallback.synthesize_outcome(context)
+
     @staticmethod
     def _coerce_goal_interpretation(value: Any, request: GoalRequest) -> GoalInterpretation:
         if isinstance(value, GoalInterpretation):
@@ -328,6 +368,25 @@ class GeminiProvider:
             text = self._extract_text(data)
         return self._parse_assessment_json(text)
 
+    # NEW: synthesize_outcome for Gemini
+    async def synthesize_outcome(self, context: SynthesisContext) -> str:
+        if not self._api_key:
+            raise ValueError("GEMINI_API_KEY is not configured")
+        prompt = self._build_synthesis_prompt(context)
+        payload = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {"responseMimeType": "text/plain"},
+        }
+        async with httpx.AsyncClient(timeout=self._timeout, transport=self._transport) as client:
+            response = await client.post(
+                f"{self._base_url}/{self._model}:generateContent",
+                params={"key": self._api_key},
+                json=payload,
+            )
+            response.raise_for_status()
+            data = response.json()
+        return self._extract_text(data)
+
     @staticmethod
     def _build_goal_prompt(request: GoalRequest) -> str:
         return (
@@ -391,6 +450,33 @@ class GeminiProvider:
             f"Current step: {context.current_step}\n"
             f"Evidence available: {', '.join(context.evidence) if context.evidence else 'none'}\n"
             f'User response: "{user_response}"\n'
+        )
+
+    # NEW: Synthesis prompt
+    @staticmethod
+    def _build_synthesis_prompt(context: SynthesisContext) -> str:
+        steps_summary = "\n".join(
+            f"- {step.title}: {step.purpose}" for step in context.steps
+        )
+        entities_summary = "\n".join(
+            f"- {entity.name} ({entity.entity_type}): relevance={entity.relevance}, metadata={entity.metadata}"
+            for entity in context.entities
+        )
+        notes = "\n".join(f"- {note}" for note in context.context_notes) if context.context_notes else "None"
+        return (
+            "You are Saint's synthesis layer. You have been given a goal and a path of steps with evidence "
+            "collected from DataHub. Synthesize a final, evidence-backed outcome that directly answers the user's "
+            "original goal. Write 2-4 plain-English sentences that summarize the key findings, the most relevant "
+            "evidence, and a recommended next action or conclusion. Do not add a preamble like 'Here is the synthesis' — "
+            "just write the outcome directly.\n\n"
+            f"Goal: {context.goal}\n\n"
+            "Steps taken:\n"
+            f"{steps_summary}\n\n"
+            "Entities discovered:\n"
+            f"{entities_summary}\n\n"
+            "Additional notes:\n"
+            f"{notes}\n\n"
+            "Based on all this, what is the final outcome?"
         )
 
     @staticmethod
@@ -494,6 +580,25 @@ class GroqProvider:
             text = self._extract_text(data)
         return self._parse_assessment_json(text)
 
+    # NEW: synthesize_outcome for Groq
+    async def synthesize_outcome(self, context: SynthesisContext) -> str:
+        if not self._api_key:
+            raise ValueError("GROQ_API_KEY is not configured")
+        payload = {
+            "model": self._model,
+            "messages": [{"role": "user", "content": self._build_synthesis_prompt(context)}],
+            "temperature": 0.2,
+        }
+        async with httpx.AsyncClient(timeout=self._timeout, transport=self._transport) as client:
+            response = await client.post(
+                self._base_url,
+                headers={"Authorization": f"Bearer {self._api_key}"},
+                json=payload,
+            )
+            response.raise_for_status()
+            data = response.json()
+        return self._extract_text(data)
+
     @staticmethod
     def _build_goal_prompt(request: GoalRequest) -> str:
         return (
@@ -559,6 +664,34 @@ class GroqProvider:
             f"Evidence available: {', '.join(context.evidence) if context.evidence else 'none'}\n"
             f'User response: "{user_response}"\n'
         )
+
+    # NEW: Synthesis prompt (same as Gemini)
+    @staticmethod
+    def _build_synthesis_prompt(context: SynthesisContext) -> str:
+        steps_summary = "\n".join(
+            f"- {step.title}: {step.purpose}" for step in context.steps
+        )
+        entities_summary = "\n".join(
+            f"- {entity.name} ({entity.entity_type}): relevance={entity.relevance}, metadata={entity.metadata}"
+            for entity in context.entities
+        )
+        notes = "\n".join(f"- {note}" for note in context.context_notes) if context.context_notes else "None"
+        return (
+            "You are Saint's synthesis layer. You have been given a goal and a path of steps with evidence "
+            "collected from DataHub. Synthesize a final, evidence-backed outcome that directly answers the user's "
+            "original goal. Write 2-4 plain-English sentences that summarize the key findings, the most relevant "
+            "evidence, and a recommended next action or conclusion. Do not add a preamble like 'Here is the synthesis' — "
+            "just write the outcome directly.\n\n"
+            f"Goal: {context.goal}\n\n"
+            "Steps taken:\n"
+            f"{steps_summary}\n\n"
+            "Entities discovered:\n"
+            f"{entities_summary}\n\n"
+            "Additional notes:\n"
+            f"{notes}\n\n"
+            "Based on all this, what is the final outcome?"
+        )
+
     @staticmethod
     def _extract_text(data: dict[str, Any]) -> str:
         choices = data.get("choices") or []
