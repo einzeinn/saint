@@ -1,6 +1,8 @@
 from backend.app.adapters.datahub import DataHubAdapter
 from backend.app.adapters.llm import LLMAdapter
 from backend.app.domain import (
+    AssessmentContext,
+    AssessmentResult,
     ContextPackage,
     ContextualPath,
     GoalInterpretation,
@@ -166,3 +168,29 @@ class SaintOrchestrator:
         revised.context_notes.append("Path replanned after the user reported that the previous path was not useful.")
         revised.outcome = "A revised contextual path that addresses the user's evidence gap."
         return revised
+
+    async def assess_user_response(
+        self,
+        path: ContextualPath,
+        step_index: int,
+        user_response: str,
+    ) -> AssessmentResult:
+        # Build context dari step yang dipilih
+        step = path.steps[step_index]
+        entities_by_urn = {entity.urn: entity for entity in path.context}
+        step_entities = [entities_by_urn[ref] for ref in step.context_refs if ref in entities_by_urn]
+
+        evidence = []
+        for entity in step_entities:
+            for key, value in entity.metadata.items():
+                if value:
+                    evidence.append(f"{key}: {value}")
+
+        context = AssessmentContext(
+            goal=path.interpretation.desired_outcome,
+            current_step=step.title,
+            evidence=evidence,
+        )
+
+        return await self._llm.assess_response(context, user_response)
+    

@@ -45,7 +45,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "command",
         nargs="?",
-        choices=("demo", "init", "doctor", "version"),
+        choices=("demo", "init", "doctor", "version", "solve",),
         default=None,
     )
     parser.add_argument(
@@ -60,6 +60,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "version":
         console.print("[saint.brand]Saint[/saint.brand] 0.1.0")
         return 0
+    if args.command == "solve":
+        return run_solve()
     if args.command == "init":
         return run_init()
     if args.command == "doctor":
@@ -214,6 +216,56 @@ def run_doctor() -> int:
     checks.add_row("Gemini key set", "[saint.ok]✓ yes[/saint.ok]" if settings.gemini_api_key.strip() else "[saint.dim]— no[/saint.dim]")
     console.print(checks)
     return 0 if status.reachable else 1
+
+def run_solve() -> int:
+    _render_header("Solve mode — test your hypothesis against DataHub evidence")
+
+    goal = Prompt.ask("What's the problem you're trying to solve?")
+    if len(goal.strip()) < 3:
+        console.print("[saint.error]Goal must contain at least 3 characters.[/saint.error]")
+        return 2
+
+    settings = Settings()
+    orchestrator = SaintOrchestrator(
+        llm=build_llm_adapter(settings),
+        datahub=build_datahub_adapter(settings),
+    )
+
+    with console.status("[saint.dim]Interpreting your goal...[/saint.dim]", spinner="dots"):
+        interpretation = asyncio.run(orchestrator.interpret_goal(GoalRequest(goal=goal, intent=Intent.act)))
+
+    console.print(Panel(interpretation.desired_outcome, title="I understand your goal as", box=box.ROUNDED))
+
+    with console.status("[saint.dim]Discovering context from DataHub...[/saint.dim]", spinner="dots"):
+        path = asyncio.run(orchestrator.generate_contextual_path(GoalRequest(goal=goal, intent=Intent.act)))
+
+    _render_steps(path.steps)
+
+    selected = IntPrompt.ask("\nSelect a step to test your hypothesis against", default=1)
+    if not (1 <= selected <= len(path.steps)):
+        console.print("[saint.error]Invalid step.[/saint.error]")
+        return 1
+
+    hypothesis = Prompt.ask("\n[bold]What's your hypothesis?[/bold]\n(e.g., 'menurutku karena pipeline telat')")
+
+    with console.status("[saint.dim]Validating your hypothesis against DataHub evidence...[/saint.dim]", spinner="dots"):
+        result = asyncio.run(orchestrator.assess_user_response(path, selected - 1, hypothesis))
+
+    console.print(Rule("[saint.label]Assessment Result[/saint.label]", style="saint.dim"))
+    status_color = "saint.ok" if result.status == "confirmed" else "saint.warn"
+    console.print(f"Status: [{status_color}]{result.status}[/{status_color}]")
+    console.print(f"Understanding: {result.understanding}")
+
+    if result.evidence_gap:
+        console.print("\n[saint.label]Evidence gaps:[/saint.label]")
+        for gap in result.evidence_gap:
+            console.print(f" [saint.brand]→[/saint.brand] {gap}")
+
+    if result.recommended_action:
+        console.print(f"\n[saint.label]Recommended action:[/saint.label] {result.recommended_action}")
+
+    console.print(Rule(style="saint.dim"))
+    return 0
 
 
 def _render_header(mode: str) -> None:
