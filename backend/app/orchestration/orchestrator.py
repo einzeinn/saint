@@ -1,6 +1,7 @@
 from backend.app.adapters.datahub import DataHubAdapter
 from backend.app.adapters.llm import LLMAdapter
 from backend.app.domain import (
+    ContextPackage,
     ContextualPath,
     GoalInterpretation,
     GoalRequest,
@@ -106,18 +107,43 @@ class SaintOrchestrator:
     async def datahub_status(self):
         return await self._datahub.status()
 
-    def feedback_for_step(self, path: ContextualPath, step_index: int) -> str:
+    async def feedback_for_step(self, path: ContextualPath, step_index: int) -> str:
         step = path.steps[step_index]
-        if step.context_refs:
-            return (
-                f"This step is grounded in {len(step.context_refs)} context reference(s). "
-                "The prototype is showing why this action belongs in the path."
-            )
+        entities_by_urn = {entity.urn: entity for entity in path.context}
+        step_entities = [entities_by_urn[ref] for ref in step.context_refs if ref in entities_by_urn]
 
-        return (
-            "This step keeps the goal interpretation inspectable before the system "
-            "uses mock context to generate the path."
+        if not step_entities:
+            # No DataHub entity anchors this step (e.g. the initial goal
+            # confirmation step); explain the interpreted goal itself rather
+            # than a static line that says nothing about it.
+            context = ContextPackage(
+                goal=path.interpretation.desired_outcome,
+                current_entity=None,
+                evidence=path.interpretation.required_actions,
+                relationships=[],
+                next_action=step.user_action,
+            )
+            return await self._llm.explain_context(context)
+
+        primary = step_entities[0]
+        evidence = [f"{primary.name} ({primary.entity_type}): {primary.relevance}"]
+        evidence.extend(f"{key}: {value}" for key, value in primary.metadata.items())
+        evidence.extend(
+            f"{extra.name} ({extra.entity_type}): {extra.relevance}" for extra in step_entities[1:]
         )
+        relationships = [
+            entities_by_urn[urn].name if urn in entities_by_urn else urn
+            for urn in primary.relationships
+        ]
+
+        context = ContextPackage(
+            goal=path.interpretation.desired_outcome,
+            current_entity=primary.name,
+            evidence=evidence,
+            relationships=relationships,
+            next_action=step.user_action,
+        )
+        return await self._llm.explain_context(context)
 
     def replan_path(self, path: ContextualPath, assessment: PathAssessment) -> ContextualPath:
         """Add a prerequisite when the user says the current path was not useful."""

@@ -146,8 +146,8 @@ def _run_flow(request: GoalRequest, settings: Settings, demo: bool = False) -> i
     if path.steps:
         selected = 1 if demo else IntPrompt.ask("\nSelect a step for guidance", default=1)
         if 1 <= selected <= len(path.steps):
-            with console.status("[saint.dim]Preparing guidance...[/saint.dim]", spinner="dots"):
-                guidance = orchestrator.feedback_for_step(path, selected - 1)
+            with console.status("[saint.dim]Asking the LLM to explain this step...[/saint.dim]", spinner="dots"):
+                guidance = asyncio.run(orchestrator.feedback_for_step(path, selected - 1))
             console.print(Panel(guidance, title="Guidance", box=box.ROUNDED, border_style="saint.brand"))
 
     console.print(Rule("[saint.label]Assessment[/saint.label]", style="saint.dim"))

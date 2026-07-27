@@ -61,15 +61,21 @@ class MockLLMAdapter:
         )
 
     async def explain_context(self, context: ContextPackage) -> str:
-        pieces = [f"The current goal is {context.goal}."]
+        def sentence(text: str) -> str:
+            text = text.strip()
+            return text if text.endswith((".", "!", "?")) else f"{text}."
+
+        pieces = [sentence(f"The current goal is {context.goal.rstrip('.')}")]
         if context.current_entity:
-            pieces.append(f"The active entity is {context.current_entity}.")
+            pieces.append(sentence(f"The active entity is {context.current_entity.rstrip('.')}"))
         if context.evidence:
-            pieces.append("Evidence includes " + ", ".join(context.evidence) + ".")
+            joined = ", ".join(item.rstrip(".") for item in context.evidence)
+            pieces.append(sentence(f"Evidence includes {joined}"))
         if context.relationships:
-            pieces.append("Related assets include " + ", ".join(context.relationships) + ".")
+            joined = ", ".join(item.rstrip(".") for item in context.relationships)
+            pieces.append(sentence(f"Related assets include {joined}"))
         if context.next_action:
-            pieces.append(f"The suggested next action is {context.next_action}.")
+            pieces.append(sentence(f"The suggested next action is {context.next_action.rstrip('.')}"))
         return " ".join(pieces)
 
     async def assess_response(self, context: AssessmentContext, user_response: str) -> AssessmentResult:

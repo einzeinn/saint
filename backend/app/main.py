@@ -130,7 +130,7 @@ async def select_prototype_step(
         raise HTTPException(status_code=422, detail="Step index is outside the current path.")
 
     session.selected_step_index = selection.step_index
-    session.feedback = orchestrator.feedback_for_step(session.path, selection.step_index)
+    session.feedback = await orchestrator.feedback_for_step(session.path, selection.step_index)
     prototype_sessions[session_id] = session
     return session
 

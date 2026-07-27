@@ -51,7 +51,8 @@ def test_prototype_session_flow() -> None:
     assert step_response.status_code == 200
     stepped = step_response.json()
     assert stepped["selected_step_index"] == 1
-    assert "context reference" in stepped["feedback"]
+    assert "Revenue Overview Dashboard" in stepped["feedback"]
+    assert "context reference" not in stepped["feedback"]
 
 
 def test_step_selection_requires_confirmed_path() -> None:
@@ -94,3 +95,33 @@ def test_agent_context_mode_is_optional_when_dependency_is_missing() -> None:
     assert status.configured is True
     assert status.reachable is False
     assert "dependency" in status.detail.lower()
+
+
+def test_feedback_for_step_explains_the_grounded_entity_and_its_metadata() -> None:
+    orchestrator = SaintOrchestrator(MockLLMAdapter(), MockDataHubAdapter())
+    request = GoalRequest(goal="Understand the revenue dashboard", intent="explore")
+
+    path = asyncio.run(orchestrator.generate_contextual_path(request))
+    context_step_index = next(
+        index for index, step in enumerate(path.steps) if step.step_type == "context"
+    )
+
+    feedback = asyncio.run(orchestrator.feedback_for_step(path, context_step_index))
+
+    entity = path.context[0]
+    assert entity.name in feedback
+    assert "context reference" not in feedback
+
+
+def test_feedback_for_step_explains_the_goal_when_no_entity_is_grounded() -> None:
+    orchestrator = SaintOrchestrator(MockLLMAdapter(), MockDataHubAdapter())
+    request = GoalRequest(goal="Understand the revenue dashboard", intent="explore")
+
+    path = asyncio.run(orchestrator.generate_contextual_path(request))
+    confirmation_step_index = next(
+        index for index, step in enumerate(path.steps) if step.step_type == "confirmation"
+    )
+
+    feedback = asyncio.run(orchestrator.feedback_for_step(path, confirmation_step_index))
+
+    assert path.interpretation.desired_outcome in feedback
