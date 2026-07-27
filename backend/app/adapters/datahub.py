@@ -21,6 +21,10 @@ class DataHubAdapter(Protocol):
     ) -> DataHubContextDiscovery:
         """Return context relevant to the confirmed goal interpretation."""
 
+    # NEW: Get lineage for a specific entity URN
+    async def get_lineage(self, urn: str) -> list[str]:
+        """Return upstream/downstream entity URNs connected to this entity."""
+
 
 class MockDataHubAdapter:
     provider_name = "mock"
@@ -47,30 +51,81 @@ class MockDataHubAdapter:
                     entity_type="dashboard",
                     relevance="Likely downstream surface for the user's investigation.",
                     relationships=["urn:li:dataset:warehouse.revenue_daily"],
-                    metadata={"domain": "revenue", "owner": "analytics"},
+                    metadata={
+                        "domain": "revenue",
+                        "owner": "analytics",
+                        # NEW: Quality assertions as concrete evidence
+                        "assertion_status": "FAILING",
+                        "freshness_lag": "2h 15m (expected: < 1h)",
+                        "volume_anomaly": "down 23% vs 7-day avg",
+                        "last_refresh": "2026-07-28T03:45:00Z",
+                        "assertion_details": "Freshness check FAILED: last processed 2026-07-28T03:45:00Z, expected 2026-07-28T04:00:00Z",
+                    },
                 ),
                 ContextEntity(
                     urn="urn:li:dataset:warehouse.revenue_daily",
                     name="warehouse.revenue_daily",
                     entity_type="dataset",
                     relevance="Underlying dataset used to explain dashboard movement.",
-                    relationships=["urn:li:dataJob:daily-revenue-pipeline"],
-                    metadata={"freshness": "daily", "quality": "tracked"},
+                    relationships=[
+                        "urn:li:dataJob:daily-revenue-pipeline",
+                        "urn:li:dashboard:revenue-overview",
+                    ],
+                    metadata={
+                        "freshness": "daily",
+                        "quality": "tracked",
+                        "owner": "data_engineering",
+                        "row_count": "1,247,892",
+                        "last_updated": "2026-07-28T02:30:00Z",
+                        "assertion_status": "PASSING",
+                        "schema_version": "v2.3.1",
+                    },
                 ),
                 ContextEntity(
                     urn="urn:li:dataJob:daily-revenue-pipeline",
                     name="daily-revenue-pipeline",
-                    entity_type="pipeline",
+                    entity_type="dataJob",
                     relevance="Upstream processing context for freshness and changes.",
-                    relationships=[],
-                    metadata={"schedule": "daily", "status": "active"},
+                    relationships=[
+                        "urn:li:dataset:warehouse.revenue_daily",
+                        "urn:li:dataset:raw.sales_transactions",
+                    ],
+                    metadata={
+                        "schedule": "daily",
+                        "status": "active",
+                        "owner": "data_engineering",
+                        "assertion_status": "FAILING",
+                        "execution_duration": "47m (expected: < 30m)",
+                        "last_run": "2026-07-28T03:00:00Z",
+                        "failure_reason": "Upstream source delayed due to network timeout",
+                    },
+                ),
+                # NEW: Added raw source to show full lineage
+                ContextEntity(
+                    urn="urn:li:dataset:raw.sales_transactions",
+                    name="raw.sales_transactions",
+                    entity_type="dataset",
+                    relevance="Raw source feeding the pipeline.",
+                    relationships=["urn:li:dataJob:daily-revenue-pipeline"],
+                    metadata={
+                        "domain": "sales",
+                        "owner": "data_ingestion",
+                        "ingestion_frequency": "hourly",
+                        "assertion_status": "PASSING",
+                        "records_received": "156,234",
+                        "source": "kafka://sales.txns",
+                    },
                 ),
             ]
             return DataHubContextDiscovery(
                 provider=self.provider_name,
                 source="mock-revenue-fixture",
                 entities=entities,
-                notes=["Mock fixture shaped like DataHub context for Phase 1 and Phase 2 initial validation."],
+                notes=[
+                    "Mock fixture shaped like DataHub context with assertion evidence.",
+                    "Freshness FAILING on dashboard, pipeline execution delayed.",
+                    "Volume anomaly detected (-23%), likely due to upstream delay.",
+                ],
             )
 
         return DataHubContextDiscovery(
@@ -88,6 +143,31 @@ class MockDataHubAdapter:
             ],
             notes=["No matching fixture found, so generic mock context was returned."],
         )
+
+    # NEW: Mock lineage implementation
+    async def get_lineage(self, urn: str) -> list[str]:
+        """Return mock lineage for the given URN."""
+        # Pre-built lineage map for our mock entities
+        lineage_map = {
+            "urn:li:dashboard:revenue-overview": [
+                "urn:li:dataset:warehouse.revenue_daily",
+                "urn:li:dataJob:daily-revenue-pipeline",
+                "urn:li:dataset:raw.sales_transactions",
+            ],
+            "urn:li:dataset:warehouse.revenue_daily": [
+                "urn:li:dataJob:daily-revenue-pipeline",
+                "urn:li:dashboard:revenue-overview",
+                "urn:li:dataset:raw.sales_transactions",
+            ],
+            "urn:li:dataJob:daily-revenue-pipeline": [
+                "urn:li:dataset:warehouse.revenue_daily",
+                "urn:li:dataset:raw.sales_transactions",
+            ],
+            "urn:li:dataset:raw.sales_transactions": [
+                "urn:li:dataJob:daily-revenue-pipeline",
+            ],
+        }
+        return lineage_map.get(urn, [])
 
 
 class DataHubMCPAdapter:
@@ -189,6 +269,55 @@ class DataHubMCPAdapter:
                 entities=[],
                 notes=[f"DataHub context discovery failed: {exc.__class__.__name__}."],
             )
+
+    # NEW: get_lineage via MCP
+    async def get_lineage(self, urn: str) -> list[str]:
+        """Get lineage for a URN using MCP."""
+        status = await self.status()
+        if not status.configured or not status.reachable:
+            return []
+
+        try:
+            async with httpx.AsyncClient(
+                timeout=self._timeout, transport=self._transport
+            ) as client:
+                await self._initialize(client)
+                tools = await self._list_tools(client)
+                # Try to find a lineage tool
+                lineage_tool = self._resolve_tool(
+                    tools, "get_lineage", ("lineage", "get_lineage", "lineage_graph")
+                )
+                if not lineage_tool:
+                    # Try entity tool with lineage expansion
+                    entity_tool = self._resolve_tool(
+                        tools, self._entity_tool, ("get_entity", "entity", "get_data_entity")
+                    )
+                    if entity_tool:
+                        details = await self._call_tool(
+                            client, entity_tool, self._entity_arguments(entity_tool, urn)
+                        )
+                        # Extract relationships from entity details
+                        relationships = []
+                        for record in self._records(details):
+                            rels = self._relationships(record)
+                            if rels:
+                                relationships.extend(rels)
+                        return relationships
+                    return []
+
+                response = await self._call_tool(
+                    client, lineage_tool, {"urn": urn, "depth": 3}
+                )
+                # Extract URNs from response
+                lineage_urns = []
+                for record in self._records(response):
+                    rels = self._relationships(record)
+                    if rels:
+                        lineage_urns.extend(rels)
+                return list(dict.fromkeys(lineage_urns))
+        except (httpx.HTTPError, ValueError, KeyError) as exc:
+            # Graceful fallback: return empty list
+            return []
 
     async def _initialize(self, client: httpx.AsyncClient) -> None:
         await self._mcp_request(
@@ -375,6 +504,11 @@ class DataHubMCPAdapter:
                 "definition",
                 "properties.definition",
             ),
+            # NEW: Assertions are key evidence
+            "assertion_status": ("assertions", "assertionStatus", "qualityAssertions"),
+            "freshness_lag": ("freshnessLag", "lag", "staleTime"),
+            "volume_anomaly": ("volumeAnomaly", "rowAnomaly", "changePercent"),
+            "assertion_details": ("assertionDetails", "assertionMessage", "reason"),
         }
         for key, paths in aliases.items():
             value = DataHubMCPAdapter._value(record, *paths)
@@ -540,6 +674,64 @@ class DataHubStdioAdapter(DataHubMCPAdapter):
             if process is not None:
                 await self._stop_process(process)
 
+    # NEW: get_lineage via stdio
+    async def get_lineage(self, urn: str) -> list[str]:
+        """Get lineage via stdio MCP."""
+        status = await self.status()
+        if not status.reachable:
+            return []
+
+        process: asyncio.subprocess.Process | None = None
+        try:
+            process = await self._start_process()
+            await self._stdio_request(process, "initialize", self._initialize_params())
+            await self._stdio_notification(process, "notifications/initialized")
+            tools_result = await self._stdio_request(process, "tools/list", {})
+            tools = tools_result.get("tools", [])
+
+            lineage_tool = self._resolve_tool(
+                tools, "get_lineage", ("lineage", "get_lineage", "lineage_graph")
+            )
+            if not lineage_tool:
+                entity_tool = self._resolve_tool(
+                    tools,
+                    self._entity_tool,
+                    ("get_entities", "get_entity", "entity", "get_data_entity"),
+                )
+                if entity_tool:
+                    detail = await self._stdio_request(
+                        process,
+                        "tools/call",
+                        {
+                            "name": entity_tool,
+                            "arguments": self._entity_arguments(entity_tool, urn),
+                        },
+                    )
+                    relationships = []
+                    for record in self._records(detail):
+                        rels = self._relationships(record)
+                        if rels:
+                            relationships.extend(rels)
+                    return relationships
+                return []
+
+            response = await self._stdio_request(
+                process,
+                "tools/call",
+                {"name": lineage_tool, "arguments": {"urn": urn, "depth": 3}},
+            )
+            lineage_urns = []
+            for record in self._records(response):
+                rels = self._relationships(record)
+                if rels:
+                    lineage_urns.extend(rels)
+            return list(dict.fromkeys(lineage_urns))
+        except (OSError, asyncio.TimeoutError, ValueError, KeyError):
+            return []
+        finally:
+            if process is not None:
+                await self._stop_process(process)
+
     async def _start_process(self) -> asyncio.subprocess.Process:
         environment = os.environ.copy()
         environment["DATAHUB_GMS_URL"] = self._gms_url
@@ -674,6 +866,39 @@ class AgentContextAdapter:
                 entities=[],
                 notes=[f"Agent Context Kit discovery failed: {exc.__class__.__name__}."],
             )
+
+    # NEW: get_lineage via Agent Context Kit
+    async def get_lineage(self, urn: str) -> list[str]:
+        """Get lineage for a URN using Agent Context Kit."""
+        try:
+            return await asyncio.to_thread(self._get_lineage_sync, urn)
+        except ImportError:
+            return []
+        except Exception:
+            return []
+
+    def _get_lineage_sync(self, urn: str) -> list[str]:
+        """Synchronous lineage fetch using DataHub SDK."""
+        try:
+            from datahub_agent_context.mcp_tools.entities import get_entities
+            from datahub_agent_context.context import DataHubContext
+
+            client = self._client()
+            with DataHubContext(client):
+                # Try to get entity with lineage expansion
+                details = get_entities(urns=[urn])
+                if not details:
+                    return []
+                # Extract relationships from the entity details
+                relationships = []
+                for record in DataHubMCPAdapter._records(details):
+                    rels = DataHubMCPAdapter._relationships(record)
+                    if rels:
+                        relationships.extend(rels)
+                return list(dict.fromkeys(relationships))
+        except ImportError:
+            # datahub_agent_context may not be available
+            return []
 
     def _discover_sync(self, query: str) -> list[ContextEntity]:
         from datahub_agent_context.context import DataHubContext

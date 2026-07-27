@@ -41,6 +41,11 @@ class SaintOrchestrator:
 
         if context:
             for entity in context[:5]:
+                # NEW: Get real lineage from DataHub
+                lineage = await self._datahub.get_lineage(entity.urn)
+                if lineage:
+                    entity.relationships = list(dict.fromkeys(entity.relationships + lineage))
+                
                 metadata_hint = self._metadata_hint(entity.metadata)
                 steps.append(
                     PathStep(
@@ -88,6 +93,7 @@ class SaintOrchestrator:
                 step_type="action",
             )
         )
+        
 
         return ContextualPath(
             interpretation=interpretation,
