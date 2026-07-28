@@ -438,7 +438,41 @@ class DataHubMCPAdapter:
                     metadata=cls._metadata(record),
                 )
             )
-        return cls._deduplicate_entities(entities)
+        entities = cls._deduplicate_entities(entities)
+        cls._disambiguate_duplicate_names(entities)
+        return entities
+
+    @staticmethod
+    def _disambiguate_duplicate_names(entities: list[ContextEntity]) -> None:
+        """Append a platform hint to entities that share a display name.
+
+        The same logical table often exists as separate DataHub entities per
+        platform (e.g. a Snowflake table and the dbt model built on top of
+        it) -- each has a distinct URN but can carry the same, or a
+        case-variant, name. Left alone, a path listing several of these
+        looks like unexplained duplication ("Review order_items" three
+        times) rather than genuinely different assets worth comparing.
+        """
+        counts: dict[str, int] = {}
+        for entity in entities:
+            key = entity.name.strip().lower()
+            counts[key] = counts.get(key, 0) + 1
+
+        for entity in entities:
+            key = entity.name.strip().lower()
+            if counts.get(key, 0) < 2:
+                continue
+            platform = DataHubMCPAdapter._extract_platform_from_urn(entity.urn)
+            if platform:
+                entity.name = f"{entity.name} ({platform})"
+
+    @staticmethod
+    def _extract_platform_from_urn(urn: str) -> str | None:
+        match = re.search(r"\(([^,()]+),", urn)
+        if not match:
+            return None
+        platform = match.group(1).replace("urn:li:dataPlatform:", "").strip()
+        return platform or None
 
     @staticmethod
     def _deduplicate_entities(entities: list[ContextEntity]) -> list[ContextEntity]:

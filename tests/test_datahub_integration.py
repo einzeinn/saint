@@ -283,3 +283,41 @@ def test_summarize_assertions_reports_all_passing() -> None:
 def test_summarize_assertions_returns_none_when_empty_or_unsuccessful() -> None:
     assert AgentContextAdapter._summarize_assertions({"success": False}) is None
     assert AgentContextAdapter._summarize_assertions({"success": True, "data": {"assertions": []}}) is None
+
+
+def test_entities_from_search_disambiguates_same_named_datasets_by_platform() -> None:
+    records = {
+        "results": [
+            {
+                "urn": "urn:li:dataset:(urn:li:dataPlatform:snowflake,b2fd91.ecomm.order_items,PROD)",
+                "type": "DATASET",
+                "properties": {"name": "order_items"},
+            },
+            {
+                "urn": "urn:li:dataset:(urn:li:dataPlatform:dbt,b2fd91.ecomm.order_items,PROD)",
+                "type": "DATASET",
+                "properties": {"name": "order_items"},
+            },
+        ]
+    }
+
+    entities = DataHubMCPAdapter._entities_from_search(records)
+
+    names = {entity.name for entity in entities}
+    assert names == {"order_items (snowflake)", "order_items (dbt)"}
+
+
+def test_entities_from_search_leaves_unique_names_unchanged() -> None:
+    records = {
+        "results": [
+            {
+                "urn": "urn:li:dataset:(urn:li:dataPlatform:snowflake,b2fd91.ecomm.customers,PROD)",
+                "type": "DATASET",
+                "properties": {"name": "customers"},
+            },
+        ]
+    }
+
+    entities = DataHubMCPAdapter._entities_from_search(records)
+
+    assert entities[0].name == "customers"

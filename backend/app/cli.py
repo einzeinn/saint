@@ -4,12 +4,14 @@ import logging
 from typing import Sequence
 
 from rich import box
+from rich.align import Align
 from rich.console import Console
 from rich.markup import escape
 from rich.panel import Panel
 from rich.prompt import Confirm, IntPrompt, Prompt
 from rich.rule import Rule
 from rich.table import Table
+from rich.text import Text
 from rich.theme import Theme
 
 from backend.app.adapters.datahub import build_datahub_adapter
@@ -36,6 +38,44 @@ SAINT_THEME = Theme(
 )
 
 console = Console(theme=SAINT_THEME)
+
+# ---------------------------------------------------------------------------
+# Hero banner: shown once, on the plain `saint` entry point.
+# ---------------------------------------------------------------------------
+SAINT_LOGO = (
+    "███████╗ █████╗ ██╗███╗   ██╗████████╗\n"
+    "██╔════╝██╔══██╗██║████╗  ██║╚══██╔══╝\n"
+    "███████╗███████║██║██╔██╗ ██║   ██║   \n"
+    "╚════██║██╔══██║██║██║╚██╗██║   ██║   \n"
+    "███████║██║  ██║██║██║ ╚████║   ██║   \n"
+    "╚══════╝╚═╝  ╚═╝╚═╝╚═╝  ╚═══╝   ╚═╝   "
+)
+
+MENU_ITEMS: list[tuple[str, str, str]] = [
+    ("1", "Learn", "Understand a concept, grounded in real DataHub context"),
+    ("2", "Explore", "Investigate a dataset, dashboard, or pipeline from scratch"),
+    ("3", "Solve", "Test your own hypothesis against DataHub evidence"),
+    ("4", "Demo", "See Saint in action instantly \u2014 no setup required"),
+    ("5", "Doctor", "Check your DataHub and LLM configuration"),
+    ("6", "Init", "Configure your DataHub connection"),
+    ("0", "Exit", "Quit Saint"),
+]
+
+
+def _render_hero() -> None:
+    console.print()
+    console.print(Align.center(Text(SAINT_LOGO, style="saint.brand")))
+    console.print(Align.center(Text("Context-aware path to insight", style="saint.dim")))
+    console.print()
+
+    menu = Table.grid(padding=(0, 2, 0, 0))
+    menu.add_column(style="saint.label", justify="right", no_wrap=True)
+    menu.add_column(style="saint.step", no_wrap=True)
+    menu.add_column(style="saint.dim")
+    for key, label, description in MENU_ITEMS:
+        menu.add_row(key, label, description)
+    console.print(Align.center(menu))
+    console.print()
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -93,11 +133,27 @@ def run_demo(live: bool = False) -> int:
 
 
 def run_interactive() -> int:
-    _render_header("Interactive mode")
-    console.print("[saint.label]1[/saint.label] Learn   [saint.label]2[/saint.label] Explore   [saint.label]3[/saint.label] Solve")
-    choice = IntPrompt.ask("Choose an entry", choices=["1", "2", "3"], default=1)
-    intent = {1: Intent.learn, 2: Intent.explore, 3: Intent.act}[choice]
-    labels = {Intent.learn: "Learn", Intent.explore: "Explore", Intent.act: "Solve"}
+    _render_hero()
+    choice = IntPrompt.ask(
+        "Choose an option",
+        choices=[item[0] for item in MENU_ITEMS],
+        default=1,
+        show_choices=False,
+    )
+
+    if choice == 0:
+        return 0
+    if choice == 3:
+        return run_solve()
+    if choice == 4:
+        return run_demo()
+    if choice == 5:
+        return run_doctor()
+    if choice == 6:
+        return run_init()
+
+    intent = {1: Intent.learn, 2: Intent.explore}[choice]
+    labels = {Intent.learn: "Learn", Intent.explore: "Explore"}
     console.print(f"\n[saint.label]Entry:[/saint.label] {labels[intent]}")
     goal = Prompt.ask("What do you want to accomplish?")
     if len(goal.strip()) < 3:
