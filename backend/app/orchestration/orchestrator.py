@@ -107,11 +107,18 @@ class SaintOrchestrator:
 
     @staticmethod
     def _metadata_hint(metadata: dict) -> str:
+        priority_keys = ("owner", "freshness", "quality", "domain", "assertion_status")
         relevant = [
             f"{key}: {value}"
-            for key in ("owner", "freshness", "quality", "domain")
+            for key in priority_keys
             if (value := metadata.get(key)) not in (None, "")
         ]
+        extra = [
+            f"{key}: {value}"
+            for key, value in metadata.items()
+            if key not in priority_keys and value not in (None, "") and ("quality" in key.lower() or "assertion" in key.lower() or "anomaly" in key.lower())
+        ]
+        relevant.extend(extra)
         return f" Metadata evidence: {', '.join(relevant)}." if relevant else ""
 
     async def datahub_status(self):

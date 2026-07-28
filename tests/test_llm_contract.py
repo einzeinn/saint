@@ -11,7 +11,7 @@ from backend.app.adapters.llm import (
     build_llm_adapter,
 )
 from backend.app.config import Settings
-from backend.app.domain import GoalRequest, Intent
+from backend.app.domain import ContextEntity, GoalRequest, Intent, PathStep, SynthesisContext
 from backend.app.main import app
 
 
@@ -151,3 +151,60 @@ def test_assess_response_endpoint_returns_structured_result() -> None:
     assert payload["status"] == "partial"
     assert "understanding" in payload
     assert "evidence_gap" in payload
+
+
+def test_mock_synthesize_outcome_leads_with_failing_assertions() -> None:
+    context = SynthesisContext(
+        goal="Understand why the revenue dashboard changed",
+        steps=[
+            PathStep(
+                title="Review revenue_daily",
+                mode=Intent.explore,
+                purpose="Check the dataset",
+                user_action="Review it",
+            )
+        ],
+        entities=[
+            ContextEntity(
+                urn="urn:li:dataset:revenue_daily",
+                name="revenue_daily",
+                entity_type="dataset",
+                relevance="Underlying dataset",
+                metadata={"quality": "1 assertion FAILING (FRESHNESS); 2 passing", "owner": "data_engineering"},
+            ),
+        ],
+    )
+
+    synthesis = asyncio.run(MockLLMAdapter().synthesize_outcome(context))
+
+    assert "FAILING" in synthesis
+    assert synthesis.count("assertion_status") == 0  # no raw key dump
+    assert "revenue_daily" in synthesis
+
+
+def test_mock_synthesize_outcome_deduplicates_repeated_metadata_keys() -> None:
+    context = SynthesisContext(
+        goal="Understand the pipeline",
+        steps=[],
+        entities=[
+            ContextEntity(
+                urn="urn:li:dataset:a",
+                name="a",
+                entity_type="dataset",
+                relevance="r",
+                metadata={"owner": "team-a"},
+            ),
+            ContextEntity(
+                urn="urn:li:dataset:b",
+                name="b",
+                entity_type="dataset",
+                relevance="r",
+                metadata={"owner": "team-b"},
+            ),
+        ],
+    )
+
+    synthesis = asyncio.run(MockLLMAdapter().synthesize_outcome(context))
+
+    # "owner" key appears once in the highlight list, not once per entity
+    assert synthesis.count("owner:") == 1

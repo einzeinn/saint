@@ -252,3 +252,34 @@ def test_entities_from_search_falls_back_to_readable_platform_id_without_a_title
     entities = DataHubMCPAdapter._entities_from_search({"results": [record]})
 
     assert entities[0].name == "baz (looker)"
+
+
+def test_summarize_assertions_reports_failures_over_passes() -> None:
+    result = {
+        "success": True,
+        "data": {
+            "assertions": [
+                {"type": "FRESHNESS", "latestResultType": "FAILURE"},
+                {"type": "VOLUME", "latestResultType": "SUCCESS"},
+                {"type": "VOLUME", "latestResultType": "SUCCESS"},
+            ]
+        },
+    }
+
+    summary = AgentContextAdapter._summarize_assertions(result)
+
+    assert summary == "1 assertion FAILING (FRESHNESS); 2 passing"
+
+
+def test_summarize_assertions_reports_all_passing() -> None:
+    result = {
+        "success": True,
+        "data": {"assertions": [{"type": "VOLUME", "latestResultType": "SUCCESS"}]},
+    }
+
+    assert AgentContextAdapter._summarize_assertions(result) == "1 assertion passing"
+
+
+def test_summarize_assertions_returns_none_when_empty_or_unsuccessful() -> None:
+    assert AgentContextAdapter._summarize_assertions({"success": False}) is None
+    assert AgentContextAdapter._summarize_assertions({"success": True, "data": {"assertions": []}}) is None

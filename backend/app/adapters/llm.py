@@ -102,21 +102,50 @@ class MockLLMAdapter:
 
     # NEW: Mock implementation for synthesis
     async def synthesize_outcome(self, context: SynthesisContext) -> str:
-        # Build a simple summary from available evidence
-        evidence_list = []
+        failing: list[str] = []
+        passing_count = 0
+        other_highlights: list[str] = []
+        seen_keys: set[str] = set()
+
         for entity in context.entities:
             for key, value in entity.metadata.items():
-                if value:
-                    evidence_list.append(f"{key}: {value}")
-        evidence_text = ", ".join(evidence_list) if evidence_list else "no specific evidence discovered"
-        step_titles = [step.title for step in context.steps]
-        steps_text = ", ".join(step_titles)
-        return (
-            f"Based on the gathered evidence ({evidence_text}), the goal '{context.goal}' "
-            f"can be addressed by following these steps: {steps_text}. "
-            "It is recommended to verify recent upstream changes and check freshness metadata "
+                if not value:
+                    continue
+                text = str(value)
+                if "quality" in key.lower() or "assertion" in key.lower():
+                    if "FAIL" in text.upper() or "ERROR" in text.upper():
+                        failing.append(f"{entity.name}: {text}")
+                        continue
+                    if "pass" in text.lower():
+                        passing_count += 1
+                        continue
+                if key not in seen_keys:
+                    seen_keys.add(key)
+                    other_highlights.append(f"{key}: {text}")
+
+        goal = context.goal.rstrip(".")
+        entity_count = len(context.entities)
+        step_count = len(context.steps)
+
+        sentences = [
+            f"Across {entity_count} DataHub entity(ies) and {step_count} step(s), "
+            f"here is what was found for \"{goal}\"."
+        ]
+        if failing:
+            sentences.append("Quality issues: " + "; ".join(failing[:3]) + ".")
+        if other_highlights:
+            sentences.append("Other evidence: " + ", ".join(other_highlights[:4]) + ".")
+        if not failing and passing_count:
+            sentences.append(f"{passing_count} data quality assertion(s) are currently passing.")
+        if not failing and not other_highlights and not passing_count:
+            sentences.append("No specific evidence was discovered for this path.")
+        sentences.append(
+            "Review the flagged evidence above, prioritizing any FAILING assertions, "
             "to confirm the root cause."
+            if failing
+            else "Review the evidence above to confirm this addresses the original goal."
         )
+        return " ".join(sentences)
 
     def _infer_intent(self, goal: str) -> Intent:
         normalized = goal.lower()

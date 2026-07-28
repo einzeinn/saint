@@ -904,27 +904,30 @@ class AgentContextAdapter:
             return []
 
     def _get_lineage_sync(self, urn: str) -> list[str]:
-        """Synchronous lineage fetch using DataHub SDK."""
+        """Fetch real upstream and downstream lineage via Agent Context Kit."""
         try:
-            from datahub_agent_context.mcp_tools.entities import get_entities
             from datahub_agent_context.context import DataHubContext
-
-            client = self._client()
-            with DataHubContext(client):
-                # Try to get entity with lineage expansion
-                details = get_entities(urns=[urn])
-                if not details:
-                    return []
-                # Extract relationships from the entity details
-                relationships = []
-                for record in DataHubMCPAdapter._records(details):
-                    rels = DataHubMCPAdapter._relationships(record)
-                    if rels:
-                        relationships.extend(rels)
-                return list(dict.fromkeys(relationships))
+            from datahub_agent_context.mcp_tools.lineage import get_lineage as fetch_lineage
         except ImportError:
-            # datahub_agent_context may not be available
             return []
+
+        client = self._client()
+        urns: list[str] = []
+        with DataHubContext(client):
+            for upstream, direction_key in ((True, "upstreams"), (False, "downstreams")):
+                try:
+                    result = fetch_lineage(urn=urn, upstream=upstream, max_hops=1, max_results=15)
+                except Exception:
+                    # Some entity types (e.g. domains, tags) don't support
+                    # lineage; skip that direction rather than failing the
+                    # whole path.
+                    continue
+                direction = (result or {}).get(direction_key) or {}
+                for item in direction.get("searchResults") or []:
+                    candidate = (item.get("entity") or {}).get("urn")
+                    if candidate:
+                        urns.append(str(candidate))
+        return list(dict.fromkeys(urns))
 
     def _discover_sync(self, query: str) -> list[ContextEntity]:
         from datahub_agent_context.context import DataHubContext
@@ -969,8 +972,67 @@ class AgentContextAdapter:
                 if DataHubMCPAdapter._value(record, "urn", "entityUrn", "entity.urn")
             ]
             details = get_entities(urns=urns) if urns else []
-        _enrich_entity_map(entities, details)
+            _enrich_entity_map(entities, details)
+            self._attach_quality_signals(entities)
         return entities
+
+    @staticmethod
+    def _attach_quality_signals(entities: list[ContextEntity]) -> None:
+        """Attach real data-quality assertion results to dataset entities.
+
+        Must run inside the caller's ``DataHubContext`` block. Limited to the
+        first few dataset entities so an interactive session doesn't block on
+        a GraphQL call per dataset.
+        """
+        try:
+            from datahub_agent_context.mcp_tools.assertions import get_dataset_assertions
+        except ImportError:
+            return
+
+        dataset_entities = [e for e in entities if e.entity_type.lower() == "dataset"][:5]
+        for entity in dataset_entities:
+            try:
+                result = get_dataset_assertions(urn=entity.urn, count=5)
+            except Exception:
+                continue
+            summary = AgentContextAdapter._summarize_assertions(result)
+            if summary:
+                entity.metadata["quality"] = summary
+
+    @staticmethod
+    def _summarize_assertions(result: Any) -> str | None:
+        if not isinstance(result, dict) or not result.get("success"):
+            return None
+        items = ((result.get("data") or {}).get("assertions")) or []
+        if not items:
+            return None
+
+        failing_types = sorted(
+            {
+                str(item.get("type") or "unknown")
+                for item in items
+                if str(item.get("latestResultType") or "").upper() in ("FAILURE", "ERROR")
+            }
+        )
+        passing_count = sum(
+            1 for item in items if str(item.get("latestResultType") or "").upper() == "SUCCESS"
+        )
+
+        if failing_types:
+            failing_count = sum(
+                1
+                for item in items
+                if str(item.get("latestResultType") or "").upper() in ("FAILURE", "ERROR")
+            )
+            plural = "s" if failing_count != 1 else ""
+            return (
+                f"{failing_count} assertion{plural} FAILING ({', '.join(failing_types)}); "
+                f"{passing_count} passing"
+            )
+        if passing_count:
+            plural = "s" if passing_count != 1 else ""
+            return f"{passing_count} assertion{plural} passing"
+        return None
 
     @staticmethod
     def _infer_entity_type_filter(goal: str) -> str | None:
