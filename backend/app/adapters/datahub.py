@@ -1,4 +1,4 @@
-import asyncio
+﻿import asyncio
 import json
 import os
 import re
@@ -28,7 +28,7 @@ class DataHubAdapter(Protocol):
     ) -> DataHubContextDiscovery:
         """Return context relevant to the confirmed goal interpretation."""
 
-    # NEW: Get lineage for a specific entity URN
+    # Get lineage for a specific entity URN
     async def get_lineage(self, urn: str) -> list[str]:
         """Return upstream/downstream entity URNs connected to this entity."""
 
@@ -81,7 +81,7 @@ class MockDataHubAdapter:
                     metadata={
                         "domain": "revenue",
                         "owner": "analytics",
-                        # NEW: Quality assertions as concrete evidence
+                        # Quality assertions as concrete evidence
                         "assertion_status": "FAILING",
                         "freshness_lag": "2h 15m (expected: < 1h)",
                         "volume_anomaly": "down 23% vs 7-day avg",
@@ -127,7 +127,7 @@ class MockDataHubAdapter:
                         "failure_reason": "Upstream source delayed due to network timeout",
                     },
                 ),
-                # NEW: Added raw source to show full lineage
+                # Added raw source to show full lineage
                 ContextEntity(
                     urn="urn:li:dataset:raw.sales_transactions",
                     name="raw.sales_transactions",
@@ -171,7 +171,7 @@ class MockDataHubAdapter:
             notes=["No matching fixture found, so generic mock context was returned."],
         )
 
-    # NEW: Mock lineage implementation
+    # Mock lineage implementation
     async def get_lineage(self, urn: str) -> list[str]:
         """Return mock lineage for the given URN."""
         # Pre-built lineage map for our mock entities
@@ -333,7 +333,7 @@ class DataHubMCPAdapter:
                 notes=[f"DataHub context discovery failed: {exc.__class__.__name__}."],
             )
 
-    # NEW: get_lineage via MCP
+    # get_lineage via MCP
     async def get_lineage(self, urn: str) -> list[str]:
         """Get lineage for a URN using MCP."""
         status = await self.status()
@@ -659,7 +659,7 @@ class DataHubMCPAdapter:
                 "definition",
                 "properties.definition",
             ),
-            # NEW: Assertions are key evidence
+            # Assertions are key evidence
             "assertion_status": ("assertions", "assertionStatus", "qualityAssertions"),
             "freshness_lag": ("freshnessLag", "lag", "staleTime"),
             "volume_anomaly": ("volumeAnomaly", "rowAnomaly", "changePercent"),
@@ -829,7 +829,7 @@ class DataHubStdioAdapter(DataHubMCPAdapter):
             if process is not None:
                 await self._stop_process(process)
 
-    # NEW: get_lineage via stdio
+    # get_lineage via stdio
     async def get_lineage(self, urn: str) -> list[str]:
         """Get lineage via stdio MCP."""
         status = await self.status()
@@ -1022,7 +1022,7 @@ class AgentContextAdapter:
                 notes=[f"Agent Context Kit discovery failed: {exc.__class__.__name__}."],
             )
 
-    # NEW: get_lineage via Agent Context Kit
+    # get_lineage via Agent Context Kit
     async def get_lineage(self, urn: str) -> list[str]:
         """Get lineage for a URN using Agent Context Kit."""
         try:

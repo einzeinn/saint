@@ -20,8 +20,8 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
     groq_api_key: str = ""
     groq_base_url: str = ""
-    llm_model: str = ""  # dipakai khusus Gemini
-    groq_model: str = ""  # dipakai khusus Groq
+    llm_model: str = ""  # used specifically for Gemini
+    groq_model: str = ""  # used specifically for Groq
 
     datahub_provider: str = "mock"
     datahub_gms_url: str = "http://localhost:8080"

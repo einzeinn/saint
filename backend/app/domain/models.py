@@ -1,4 +1,4 @@
-from enum import StrEnum
+﻿from enum import StrEnum
 from typing import Any, Optional
 
 from pydantic import BaseModel, Field
@@ -50,7 +50,7 @@ class AssessmentResult(BaseModel):
     recommended_action: str | None = None
 
 
-# NEW: Context for final synthesis
+# Context for final synthesis
 class SynthesisContext(BaseModel):
     goal: str
     steps: list["PathStep"]
@@ -59,7 +59,7 @@ class SynthesisContext(BaseModel):
     context_notes: list[str] = Field(default_factory=list)
 
 
-# NEW: Result of final synthesis
+# Result of final synthesis
 class SynthesisResult(BaseModel):
     synthesis: str
     confidence: float | None = None
@@ -90,7 +90,7 @@ class ContextualPath(BaseModel):
     outcome: str
     context_source: str = "unknown"
     context_notes: list[str] = Field(default_factory=list)
-    synthesis: str | None = None  # NEW: stored synthesis result
+    synthesis: str | None = None  # stored synthesis result
 
 
 class PrototypeSession(BaseModel):

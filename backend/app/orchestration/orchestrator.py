@@ -1,4 +1,4 @@
-from backend.app.adapters.datahub import DataHubAdapter
+﻿from backend.app.adapters.datahub import DataHubAdapter
 from backend.app.adapters.llm import LLMAdapter
 from backend.app.domain import (
     AssessmentContext,
@@ -42,7 +42,7 @@ class SaintOrchestrator:
 
         if context:
             for entity in context[:5]:
-                # NEW: Get real lineage from DataHub
+                # Get real lineage from DataHub
                 lineage = await self._datahub.get_lineage(entity.urn)
                 if lineage:
                     entity.relationships = list(dict.fromkeys(entity.relationships + lineage))
@@ -103,7 +103,7 @@ class SaintOrchestrator:
             outcome=interpretation.desired_outcome,
             context_source=discovery.source,
             context_notes=discovery.notes,
-            synthesis=None,   # NEW: initial empty
+            synthesis=None,   # initial empty
         )
 
     @staticmethod
@@ -183,7 +183,7 @@ class SaintOrchestrator:
         )
         revised.context_notes.append("Path replanned after the user reported that the previous path was not useful.")
         revised.outcome = "A revised contextual path that addresses the user's evidence gap."
-        # NEW: reset synthesis because path changed
+        # reset synthesis because path changed
         revised.synthesis = None
         return revised
 
@@ -193,7 +193,7 @@ class SaintOrchestrator:
         step_index: int,
         user_response: str,
     ) -> AssessmentResult:
-        # Build context dari step yang dipilih
+        # Build context from the selected step
         step = path.steps[step_index]
         entities_by_urn = {entity.urn: entity for entity in path.context}
         step_entities = [entities_by_urn[ref] for ref in step.context_refs if ref in entities_by_urn]
@@ -212,7 +212,7 @@ class SaintOrchestrator:
 
         return await self._llm.assess_response(context, user_response)
 
-    # NEW: Synthesize final outcome
+    # Synthesize final outcome
     async def synthesize_final_outcome(self, path: ContextualPath) -> str:
         """Synthesize a final, evidence-backed outcome from all collected evidence."""
         # If already synthesized, return cached version

@@ -1,4 +1,4 @@
-import json
+﻿import json
 from typing import Any, Protocol
 
 import httpx
@@ -31,7 +31,7 @@ class LLMAdapter(Protocol):
     async def assess_response(self, context: AssessmentContext, user_response: str) -> AssessmentResult:
         """Assess a user reply against the current evidence context."""
 
-    # NEW: Synthesize final outcome from all evidence collected along the path
+    # Synthesize final outcome from all evidence collected along the path
     async def synthesize_outcome(self, context: SynthesisContext) -> str:
         """Synthesize a final, evidence-backed outcome statement."""
 
@@ -100,7 +100,7 @@ class MockLLMAdapter:
             recommended_action="clarify_the_observed_change",
         )
 
-    # NEW: Mock implementation for synthesis
+    # Mock implementation for synthesis
     async def synthesize_outcome(self, context: SynthesisContext) -> str:
         failing: list[str] = []
         passing_count = 0
@@ -264,7 +264,7 @@ class StructuredLLMAdapter:
             )
             return await self._fallback.assess_response(context, user_response)
 
-    # NEW: synthesize_outcome with fallback
+    # synthesize_outcome with fallback
     async def synthesize_outcome(self, context: SynthesisContext) -> str:
         try:
             result = await self._provider.synthesize_outcome(context)
@@ -397,7 +397,7 @@ class GeminiProvider:
             text = self._extract_text(data)
         return self._parse_assessment_json(text)
 
-    # NEW: synthesize_outcome for Gemini
+    # synthesize_outcome for Gemini
     async def synthesize_outcome(self, context: SynthesisContext) -> str:
         if not self._api_key:
             raise ValueError("GEMINI_API_KEY is not configured")
@@ -481,7 +481,7 @@ class GeminiProvider:
             f'User response: "{user_response}"\n'
         )
 
-    # NEW: Synthesis prompt
+    # Synthesis prompt
     @staticmethod
     def _build_synthesis_prompt(context: SynthesisContext) -> str:
         steps_summary = "\n".join(
@@ -609,7 +609,7 @@ class GroqProvider:
             text = self._extract_text(data)
         return self._parse_assessment_json(text)
 
-    # NEW: synthesize_outcome for Groq
+    # synthesize_outcome for Groq
     async def synthesize_outcome(self, context: SynthesisContext) -> str:
         if not self._api_key:
             raise ValueError("GROQ_API_KEY is not configured")
@@ -694,7 +694,7 @@ class GroqProvider:
             f'User response: "{user_response}"\n'
         )
 
-    # NEW: Synthesis prompt (same as Gemini)
+    # Synthesis prompt (same as Gemini)
     @staticmethod
     def _build_synthesis_prompt(context: SynthesisContext) -> str:
         steps_summary = "\n".join(

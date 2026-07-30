@@ -1,4 +1,4 @@
-import argparse
+﻿import argparse
 import asyncio
 import logging
 from typing import Sequence
@@ -219,7 +219,7 @@ def _run_flow(request: GoalRequest, settings: Settings, demo: bool = False) -> i
         console.print("\n[saint.label]Replanned path[/saint.label]")
         _render_steps(path.steps, show_purpose=False)
 
-    # NEW: Synthesize final outcome instead of showing path.outcome directly
+    # Synthesize final outcome instead of showing path.outcome directly
     console.print(Rule(style="saint.dim"))
     with console.status("[saint.dim]Synthesizing final outcome from all evidence...[/saint.dim]", spinner="dots"):
         synthesis = asyncio.run(orchestrator.synthesize_final_outcome(path))
@@ -307,7 +307,7 @@ def run_solve() -> int:
         console.print("[saint.error]Invalid step.[/saint.error]")
         return 1
 
-    hypothesis = Prompt.ask("\n[bold]What's your hypothesis?[/bold]\n(e.g., 'menurutku karena pipeline telat')")
+    hypothesis = Prompt.ask("\n[bold]What's your hypothesis?[/bold]\n(e.g., 'the pipeline was delayed due to a timeout')")
 
     with console.status("[saint.dim]Validating your hypothesis against DataHub evidence...[/saint.dim]", spinner="dots"):
         result = asyncio.run(orchestrator.assess_user_response(path, selected - 1, hypothesis))
@@ -325,7 +325,7 @@ def run_solve() -> int:
     if result.recommended_action:
         console.print(f"\n[saint.label]Recommended action:[/saint.label] {result.recommended_action}")
 
-    # NEW: Also show final synthesis after assessment in solve mode
+    # Also show final synthesis after assessment in solve mode
     console.print(Rule(style="saint.dim"))
     with console.status("[saint.dim]Synthesizing final outcome from all evidence...[/saint.dim]", spinner="dots"):
         synthesis = asyncio.run(orchestrator.synthesize_final_outcome(path))

@@ -5,7 +5,7 @@ import sys
 from typing import Any, Dict, List, Optional
 
 # ======================================================================
-# 1. Import DataHub SDK dengan fallback
+# 1. DataHub SDK imports with graceful fallback
 # ======================================================================
 try:
     from datahub.sdk.main_client import DataHubClient
@@ -35,7 +35,7 @@ except ImportError:
     print("Warning: get_entities tool not available.")
 
 # ======================================================================
-# 2. Import prompt templates (dari file terpisah)
+# 2. Prompt templates (imported from separate file)
 # ======================================================================
 from .prompt_templates import (
     INVESTIGATE_PROMPT,
@@ -76,12 +76,12 @@ class MockLLMProvider:
 
 
 # ======================================================================
-# 4. Adapter Khusus untuk Skill (mandiri, pakai DataHub SDK)
+# 4. Skill-specific adapter (standalone, uses DataHub SDK)
 # ======================================================================
 class _DataHubSkillAdapter:
     """
-    Adapter yang menghubungkan SaintOrchestrator ke DataHub
-    menggunakan DataHub Agent Context Kit.
+    DataHub adapter for the SaintInvestigatorSkill.
+    Bridges SaintOrchestrator to DataHub using the Agent Context Kit.
     """
     provider_name = "skill_adapter"
 
@@ -92,7 +92,7 @@ class _DataHubSkillAdapter:
         self._context = DataHubContext(client) if DataHubContext else None
 
     async def status(self):
-        from backend.app.domain import DataHubIntegrationStatus  # hanya untuk tipe data
+        from backend.app.domain import DataHubIntegrationStatus  # used for type only
         return DataHubIntegrationStatus(
             provider=self.provider_name,
             configured=True,
@@ -261,7 +261,7 @@ class SaintInvestigatorSkill:
                 "success": True,
             }
         except ImportError as e:
-            # Fallback jika backend tidak tersedia
+            # Fallback if backend is not available
             return self._fallback_investigate(goal)
         except Exception as e:
             return {
@@ -303,7 +303,7 @@ class SaintInvestigatorSkill:
                 "success": True,
             }
         except ImportError:
-            # Fallback sederhana
+            # Simple fallback
             return self._fallback_assess(hypothesis)
         except Exception as e:
             return {
@@ -325,7 +325,7 @@ class SaintInvestigatorSkill:
         return result.get("synthesis", "Unable to synthesize outcome.")
 
     # ======================================================================
-    # Fallback Methods (ketika backend tidak tersedia)
+    # Fallback Methods (used when backend is not available)
     # ======================================================================
 
     def _fallback_investigate(self, goal: str) -> Dict[str, Any]:

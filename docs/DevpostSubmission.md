@@ -10,6 +10,18 @@
 
 ---
 
+## Live Demo / Install
+
+```bash
+pip install saint-datahub && saint demo
+```
+
+**PyPI:** https://pypi.org/project/saint-datahub/  
+**GitHub:** https://github.com/einzeinn/saint  
+**Judge Setup:** https://github.com/einzeinn/saint/blob/main/docs/JudgeSetup.md
+
+---
+
 ## Submission Description (full)
 
 Everyone's building AI agents on top of data platforms. Most of them are glorified search boxes. SAINT is different.
