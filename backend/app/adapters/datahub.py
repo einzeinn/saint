@@ -7,7 +7,14 @@ from typing import Any, Protocol
 import httpx
 
 from backend.app.config import Settings
-from backend.app.domain import ContextEntity, DataHubContextDiscovery, DataHubIntegrationStatus, GoalInterpretation
+from backend.app.domain import (
+    ContextEntity,
+    DataHubContextDiscovery,
+    DataHubIntegrationStatus,
+    GoalInterpretation,
+    WriteBackRequest,
+    WriteBackResult,
+)
 
 
 class DataHubAdapter(Protocol):
@@ -24,6 +31,26 @@ class DataHubAdapter(Protocol):
     # NEW: Get lineage for a specific entity URN
     async def get_lineage(self, urn: str) -> list[str]:
         """Return upstream/downstream entity URNs connected to this entity."""
+
+    async def save_document(
+        self,
+        document_type: str,
+        title: str,
+        content: str,
+        topics: list[str] | None = None,
+        related_assets: list[str] | None = None,
+    ) -> WriteBackResult:
+        """Save a standalone document in DataHub."""
+
+    async def update_description(
+        self, entity_urn: str, description: str, operation: str = "replace"
+    ) -> WriteBackResult:
+        """Update or append description on a DataHub entity."""
+
+    async def add_tags(
+        self, tag_urns: list[str], entity_urns: list[str]
+    ) -> WriteBackResult:
+        """Add tags to DataHub entities."""
 
 
 class MockDataHubAdapter:
@@ -168,6 +195,42 @@ class MockDataHubAdapter:
             ],
         }
         return lineage_map.get(urn, [])
+
+    async def save_document(
+        self,
+        document_type: str,
+        title: str,
+        content: str,
+        topics: list[str] | None = None,
+        related_assets: list[str] | None = None,
+    ) -> WriteBackResult:
+        doc_id = abs(hash(title)) % 100000
+        urn = f"urn:li:document:saint-mock-doc-{doc_id}"
+        return WriteBackResult(
+            success=True,
+            urn=urn,
+            message=f"Mock document '{title}' ({document_type}) created successfully.",
+            action="save_document",
+        )
+
+    async def update_description(
+        self, entity_urn: str, description: str, operation: str = "replace"
+    ) -> WriteBackResult:
+        return WriteBackResult(
+            success=True,
+            urn=entity_urn,
+            message=f"Mock description ({operation}) updated for {entity_urn}.",
+            action="update_description",
+        )
+
+    async def add_tags(
+        self, tag_urns: list[str], entity_urns: list[str]
+    ) -> WriteBackResult:
+        return WriteBackResult(
+            success=True,
+            message=f"Mock tags {tag_urns} added to {len(entity_urns)} asset(s).",
+            action="add_tags",
+        )
 
 
 class DataHubMCPAdapter:
@@ -318,6 +381,38 @@ class DataHubMCPAdapter:
         except (httpx.HTTPError, ValueError, KeyError) as exc:
             # Graceful fallback: return empty list
             return []
+
+    async def save_document(
+        self,
+        document_type: str,
+        title: str,
+        content: str,
+        topics: list[str] | None = None,
+        related_assets: list[str] | None = None,
+    ) -> WriteBackResult:
+        return WriteBackResult(
+            success=False,
+            message="DataHub MCP provider does not support write-back. Use agent_context provider.",
+            action="save_document",
+        )
+
+    async def update_description(
+        self, entity_urn: str, description: str, operation: str = "replace"
+    ) -> WriteBackResult:
+        return WriteBackResult(
+            success=False,
+            message="DataHub MCP provider does not support write-back. Use agent_context provider.",
+            action="update_description",
+        )
+
+    async def add_tags(
+        self, tag_urns: list[str], entity_urns: list[str]
+    ) -> WriteBackResult:
+        return WriteBackResult(
+            success=False,
+            message="DataHub MCP provider does not support write-back. Use agent_context provider.",
+            action="add_tags",
+        )
 
     async def _initialize(self, client: httpx.AsyncClient) -> None:
         await self._mcp_request(
@@ -962,6 +1057,156 @@ class AgentContextAdapter:
                     if candidate:
                         urns.append(str(candidate))
         return list(dict.fromkeys(urns))
+
+    async def save_document(
+        self,
+        document_type: str,
+        title: str,
+        content: str,
+        topics: list[str] | None = None,
+        related_assets: list[str] | None = None,
+    ) -> WriteBackResult:
+        """Save a standalone document in DataHub using Agent Context Kit."""
+        try:
+            return await asyncio.to_thread(
+                self._save_document_sync,
+                document_type,
+                title,
+                content,
+                topics,
+                related_assets,
+            )
+        except ImportError:
+            return WriteBackResult(
+                success=False,
+                message="Agent Context Kit is not installed.",
+                action="save_document",
+            )
+        except Exception as exc:
+            return WriteBackResult(
+                success=False,
+                message=f"Failed to save document: {exc}",
+                action="save_document",
+            )
+
+    def _save_document_sync(
+        self,
+        document_type: str,
+        title: str,
+        content: str,
+        topics: list[str] | None = None,
+        related_assets: list[str] | None = None,
+    ) -> WriteBackResult:
+        from datahub_agent_context.context import DataHubContext
+        from datahub_agent_context.mcp_tools import save_document as sdk_save_document
+
+        client = self._client()
+        with DataHubContext(client):
+            res = sdk_save_document(
+                document_type=document_type,  # type: ignore
+                title=title,
+                content=content,
+                topics=topics,
+                related_assets=related_assets,
+            )
+            success = bool(res.get("success", False)) if isinstance(res, dict) else False
+            urn = res.get("urn") if isinstance(res, dict) else None
+            msg = str(res.get("message", "Document saved")) if isinstance(res, dict) else str(res)
+            return WriteBackResult(
+                success=success,
+                urn=urn,
+                message=msg,
+                action="save_document",
+            )
+
+    async def update_description(
+        self, entity_urn: str, description: str, operation: str = "replace"
+    ) -> WriteBackResult:
+        """Update or append description on a DataHub entity using Agent Context Kit."""
+        try:
+            return await asyncio.to_thread(
+                self._update_description_sync,
+                entity_urn,
+                description,
+                operation,
+            )
+        except ImportError:
+            return WriteBackResult(
+                success=False,
+                message="Agent Context Kit is not installed.",
+                action="update_description",
+            )
+        except Exception as exc:
+            return WriteBackResult(
+                success=False,
+                message=f"Failed to update description: {exc}",
+                action="update_description",
+            )
+
+    def _update_description_sync(
+        self, entity_urn: str, description: str, operation: str = "replace"
+    ) -> WriteBackResult:
+        from datahub_agent_context.context import DataHubContext
+        from datahub_agent_context.mcp_tools import update_description as sdk_update_description
+
+        client = self._client()
+        with DataHubContext(client):
+            res = sdk_update_description(
+                entity_urn=entity_urn,
+                operation=operation,  # type: ignore
+                description=description,
+            )
+            success = bool(res.get("success", False)) if isinstance(res, dict) else False
+            msg = str(res.get("message", "Description updated")) if isinstance(res, dict) else str(res)
+            return WriteBackResult(
+                success=success,
+                urn=entity_urn,
+                message=msg,
+                action="update_description",
+            )
+
+    async def add_tags(
+        self, tag_urns: list[str], entity_urns: list[str]
+    ) -> WriteBackResult:
+        """Add tags to DataHub entities using Agent Context Kit."""
+        try:
+            return await asyncio.to_thread(
+                self._add_tags_sync,
+                tag_urns,
+                entity_urns,
+            )
+        except ImportError:
+            return WriteBackResult(
+                success=False,
+                message="Agent Context Kit is not installed.",
+                action="add_tags",
+            )
+        except Exception as exc:
+            return WriteBackResult(
+                success=False,
+                message=f"Failed to add tags: {exc}",
+                action="add_tags",
+            )
+
+    def _add_tags_sync(
+        self, tag_urns: list[str], entity_urns: list[str]
+    ) -> WriteBackResult:
+        from datahub_agent_context.context import DataHubContext
+        from datahub_agent_context.mcp_tools import add_tags as sdk_add_tags
+
+        client = self._client()
+        with DataHubContext(client):
+            res = sdk_add_tags(
+                tag_urns=tag_urns,
+                entity_urns=entity_urns,
+            )
+            success = bool(res.get("success", False)) if isinstance(res, dict) else False
+            msg = str(res.get("message", "Tags added")) if isinstance(res, dict) else str(res)
+            return WriteBackResult(
+                success=success,
+                message=msg,
+                action="add_tags",
+            )
 
     def _discover_sync(self, query: str) -> list[ContextEntity]:
         from datahub_agent_context.context import DataHubContext

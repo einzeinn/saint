@@ -131,5 +131,20 @@ class DataHubContextDiscovery(BaseModel):
     notes: list[str] = Field(default_factory=list)
 
 
+class WriteBackRequest(BaseModel):
+    document_type: str = "Analysis"
+    title: str
+    content: str
+    topics: list[str] = Field(default_factory=list)
+    related_assets: list[str] = Field(default_factory=list)
+
+
+class WriteBackResult(BaseModel):
+    success: bool
+    urn: str | None = None
+    message: str = ""
+    action: str = "save_document"
+
+
 # Rebuild forward references after class definitions
 SynthesisContext.model_rebuild()

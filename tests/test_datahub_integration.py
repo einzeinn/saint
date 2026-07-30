@@ -321,3 +321,35 @@ def test_entities_from_search_leaves_unique_names_unchanged() -> None:
     entities = DataHubMCPAdapter._entities_from_search(records)
 
     assert entities[0].name == "customers"
+
+
+@pytest.mark.anyio
+async def test_mock_datahub_writeback_methods() -> None:
+    adapter = MockDataHubAdapter()
+
+    doc_res = await adapter.save_document(
+        document_type="Analysis",
+        title="Test Investigation Document",
+        content="# Findings\nAll looks good.",
+        topics=["saint-test"],
+        related_assets=["urn:li:dataset:sample.core_context"],
+    )
+    assert doc_res.success is True
+    assert "saint-mock-doc-" in doc_res.urn
+    assert doc_res.action == "save_document"
+
+    desc_res = await adapter.update_description(
+        entity_urn="urn:li:dataset:sample.core_context",
+        description="Updated description by Saint",
+        operation="replace",
+    )
+    assert desc_res.success is True
+    assert desc_res.urn == "urn:li:dataset:sample.core_context"
+
+    tag_res = await adapter.add_tags(
+        tag_urns=["urn:li:tag:SaintVerified"],
+        entity_urns=["urn:li:dataset:sample.core_context"],
+    )
+    assert tag_res.success is True
+    assert tag_res.action == "add_tags"
+

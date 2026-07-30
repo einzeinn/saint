@@ -1,0 +1,91 @@
+{
+  "interpretation": {
+    "original_goal": "I want to understand why the revenue dashboard changed",
+    "intent": "explore",
+    "desired_outcome": "Identify the root cause of the revenue dashboard metric shift by tracing upstream data lineage, reviewing recent schema and ownership changes, and confirming whether data quality issues or pipeline delays are contributing factors.",
+    "required_actions": [
+      "Identify the primary upstream dataset feeding the revenue dashboard",
+      "Check for recent schema or field changes in upstream tables",
+      "Review lineage for any recently modified pipeline jobs",
+      "Inspect data freshness and quality assertions on key datasets",
+      "Confirm whether dashboard query logic was also changed"
+    ]
+  },
+  "context_source": "datahub:agent_context",
+  "context": [
+    {
+      "urn": "urn:li:dataset:(urn:li:dataPlatform:bigquery,acryl-datahub.SampleBigQueryDataset.SampleBigQueryDataset,PROD)",
+      "entity_type": "dataset",
+      "name": "SampleBigQueryDataset",
+      "metadata": {
+        "platform": "bigquery",
+        "env": "PROD",
+        "description": "Core revenue attribution dataset. Contains transaction-level revenue data joined with attribution metadata.",
+        "owners": ["urn:li:corpuser:datahub"],
+        "domains": ["urn:li:domain:Finance"]
+      }
+    },
+    {
+      "urn": "urn:li:chart:(looker,baz)",
+      "entity_type": "chart",
+      "name": "Baz Chart",
+      "metadata": {
+        "platform": "looker",
+        "description": "Revenue trend line — 30d rolling average"
+      }
+    },
+    {
+      "urn": "urn:li:dashboard:(looker,dashboards.5)",
+      "entity_type": "dashboard",
+      "name": "Revenue Dashboard",
+      "metadata": {
+        "platform": "looker",
+        "description": "Primary revenue reporting dashboard used by Finance and GTM teams",
+        "owners": ["urn:li:corpuser:jdoe"]
+      }
+    },
+    {
+      "urn": "urn:li:dataJob:(urn:li:dataFlow:(airflow,prod_etl,PROD),datahub_sales)",
+      "entity_type": "dataJob",
+      "name": "Datahub Sales",
+      "metadata": {
+        "pipeline": "prod_etl",
+        "status": "WARNING",
+        "last_run": "2026-07-28T06:12:00Z"
+      }
+    }
+  ],
+  "steps": [
+    {
+      "title": "Map the Revenue Dashboard's upstream lineage",
+      "step_type": "explore",
+      "purpose": "Identify which datasets feed the revenue metrics and find any recently changed upstream tables.",
+      "user_action": "Use DataHub's lineage view to trace from the dashboard back through charts to source datasets."
+    },
+    {
+      "title": "Inspect schema changes on upstream datasets",
+      "step_type": "investigate",
+      "purpose": "Recent field additions or removals can silently alter metric calculations without changing dashboard queries.",
+      "user_action": "Check the schema history of SampleBigQueryDataset — look for new or renamed fields in the last 14 days."
+    },
+    {
+      "title": "Check data freshness assertions",
+      "step_type": "investigate",
+      "purpose": "A pipeline delay in an upstream table compresses the data window available for metric rollups.",
+      "user_action": "Review freshness assertions on customer_lifetime_value — the last partition timestamp may be stale."
+    },
+    {
+      "title": "Confirm dashboard query logic was not changed",
+      "step_type": "validate",
+      "purpose": "Rule out the dashboard itself as the source of the change before focusing investigation on upstream.",
+      "user_action": "Compare the current Looker LookML against the version from 14 days ago in version control."
+    },
+    {
+      "title": "Document findings and recommended remediation",
+      "step_type": "act",
+      "purpose": "Capture the root cause and recommended actions so the next person or agent inherits this knowledge.",
+      "user_action": "Use saint's publish_result to write the investigation summary back to DataHub."
+    }
+  ],
+  "outcome": "Root cause identified: upstream schema drift (promo_adjusted_revenue field) combined with a 36-hour pipeline delay on customer_lifetime_value. Revenue dashboard metric understated due to stale window and unadjusted field reference."
+}

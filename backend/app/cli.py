@@ -224,6 +224,8 @@ def _run_flow(request: GoalRequest, settings: Settings, demo: bool = False) -> i
     with console.status("[saint.dim]Synthesizing final outcome from all evidence...[/saint.dim]", spinner="dots"):
         synthesis = asyncio.run(orchestrator.synthesize_final_outcome(path))
     console.print(Panel(synthesis, title="Outcome", box=box.DOUBLE, border_style="saint.ok"))
+
+    _handle_writeback(orchestrator, path, demo=demo)
     return 0
 
 
@@ -329,8 +331,75 @@ def run_solve() -> int:
         synthesis = asyncio.run(orchestrator.synthesize_final_outcome(path))
     console.print(Panel(synthesis, title="Final Outcome", box=box.DOUBLE, border_style="saint.ok"))
 
+    _handle_writeback(orchestrator, path, demo=False)
     console.print(Rule(style="saint.dim"))
     return 0
+
+
+def _handle_writeback(orchestrator: SaintOrchestrator, path, demo: bool = False) -> None:
+    console.print()
+    preview = asyncio.run(orchestrator.build_publish_preview(path))
+
+    if demo:
+        # Demo mode: Simulated preview, NO live/mock auto-publish!
+        preview_table = Table(show_header=False, box=box.SIMPLE, border_style="saint.dim")
+        preview_table.add_column("Field", style="saint.label", no_wrap=True)
+        preview_table.add_column("Value")
+        preview_table.add_row("Title", preview["title"])
+        preview_table.add_row("Type", preview["document_type"])
+        asset_names = ", ".join(e.name for e in preview["top_entities"]) or "None"
+        preview_table.add_row("Related Assets", f"{asset_names} ({len(preview['top_entities'])} asset(s))")
+        preview_table.add_row("Topics", ", ".join(preview["topics"]))
+
+        console.print(
+            Panel(
+                preview_table,
+                title="[saint.dim]Simulated Document Publish (Demo Mode)[/saint.dim]",
+                subtitle="[saint.muted]Deterministic demo: no document was published[/saint.muted]",
+                box=box.ROUNDED,
+                border_style="saint.dim",
+            )
+        )
+        return
+
+    # Interactive mode (saint, saint solve)
+    want_publish = Confirm.ask(
+        "[saint.label]Publish investigation summary to DataHub as a Document?[/saint.label]",
+        default=False,
+    )
+    if not want_publish:
+        return
+
+    # Render Preview Panel
+    preview_table = Table(show_header=False, box=box.ROUNDED, border_style="saint.brand")
+    preview_table.add_column("Field", style="saint.label", no_wrap=True)
+    preview_table.add_column("Value")
+    preview_table.add_row("Title", preview["title"])
+    preview_table.add_row("Type", preview["document_type"])
+    asset_names = ", ".join(e.name for e in preview["top_entities"]) or "None"
+    preview_table.add_row("Related Assets", asset_names)
+    preview_table.add_row("Topics", ", ".join(preview["topics"]))
+
+    console.print()
+    console.print(Panel(preview_table, title="Publishing Preview", box=box.ROUNDED, border_style="saint.brand"))
+
+    confirmed = Confirm.ask("\n[saint.label]Confirm publishing to DataHub?[/saint.label]", default=True)
+    if not confirmed:
+        console.print("[saint.dim]Publish cancelled.[/saint.dim]")
+        return
+
+    with console.status("[saint.dim]Publishing document to DataHub...[/saint.dim]", spinner="dots"):
+        result = asyncio.run(
+            orchestrator.publish_result(
+                path, title=preview["title"], document_type=preview["document_type"]
+            )
+        )
+
+    if result.success:
+        urn_info = f"\nURN: {result.urn}" if result.urn else ""
+        console.print(f"[saint.ok]✓ Published to DataHub![/saint.ok] {result.message}{urn_info}")
+    else:
+        console.print(f"[saint.error]✗ Write-back failed:[/saint.error] {result.message}")
 
 
 def _render_header(mode: str) -> None:

@@ -10,7 +10,8 @@ from backend.app.domain import (
     Intent,
     PathAssessment,
     PathStep,
-    SynthesisContext,   # NEW
+    SynthesisContext,
+    WriteBackResult,
 )
 
 
@@ -239,3 +240,117 @@ class SaintOrchestrator:
         # Cache the result
         path.synthesis = synthesis
         return synthesis
+
+    @staticmethod
+    def _format_clean_title(path: ContextualPath) -> str:
+        """Format a clean, concise document title for DataHub."""
+        if path.context:
+            primary = path.context[0]
+            # Avoid duplicate 'Investigation' suffix if already in name
+            if "investigation" in primary.name.lower():
+                return primary.name
+            return f"{primary.name} Investigation"
+
+        goal = path.interpretation.original_goal.strip()
+        if len(goal) > 40:
+            words = goal.split()
+            goal = " ".join(words[:5])
+        return f"{goal.capitalize()} Summary"
+
+    # URN entity types that DataHub's document.relatedAssets field accepts.
+    _SUPPORTED_ASSET_TYPES: frozenset[str] = frozenset({
+        "dataset",
+        "dashboard",
+        "chart",
+        "dataJob",
+        "dataFlow",
+        "mlModel",
+        "mlFeatureTable",
+        "mlPrimaryKey",
+        "notebook",
+        "corpuser",
+        "corpGroup",
+    })
+
+    @classmethod
+    def _is_supported_asset(cls, urn: str) -> bool:
+        """Return True if the URN's entity type is accepted by DataHub relatedAssets."""
+        # URN format: urn:li:<entityType>:...
+        try:
+            entity_type = urn.split(":")[2]
+            return entity_type in cls._SUPPORTED_ASSET_TYPES
+        except IndexError:
+            return False
+
+    async def build_publish_preview(
+        self,
+        path: ContextualPath,
+        title: str | None = None,
+        document_type: str = "Analysis",
+    ) -> dict:
+        """Build preview metadata before writing back to DataHub."""
+        doc_title = title or self._format_clean_title(path)
+        # Take top 5 evidence entities for display in the document body.
+        top_entities = path.context[:5]
+        # Only pass entity-level URNs to relatedAssets — DataHub rejects
+        # schemaField and other sub-entity URNs with a 422 error.
+        related_assets = [
+            e.urn for e in top_entities if self._is_supported_asset(e.urn)
+        ]
+        topics = ["saint-analysis", path.interpretation.intent.value]
+
+        synthesis = await self.synthesize_final_outcome(path)
+        content_lines = [
+            f"# {doc_title}",
+            "",
+            "## Goal & Desired Outcome",
+            f"**Original Goal**: {path.interpretation.original_goal}",
+            f"**Target Outcome**: {path.interpretation.desired_outcome}",
+            "",
+            "## Evidence & Findings",
+            synthesis,
+            "",
+            "## Primary Assets Reviewed",
+        ]
+        for entity in top_entities:
+            content_lines.append(f"- **{entity.name}** ({entity.entity_type}): `{entity.urn}`")
+
+        content_lines.extend([
+            "",
+            "---",
+            "*Generated and published by Saint CLI Agent.*",
+        ])
+
+        return {
+            "document_type": document_type,
+            "title": doc_title,
+            "content": "\n".join(content_lines),
+            "topics": topics,
+            "related_assets": related_assets,
+            "top_entities": top_entities,
+        }
+
+    async def publish_result(
+        self,
+        path: ContextualPath,
+        title: str | None = None,
+        document_type: str = "Analysis",
+    ) -> WriteBackResult:
+        """Publish the synthesized outcome and evidence to DataHub as a Document."""
+        preview = await self.build_publish_preview(path, title=title, document_type=document_type)
+        return await self._datahub.save_document(
+            document_type=preview["document_type"],
+            title=preview["title"],
+            content=preview["content"],
+            topics=preview["topics"],
+            related_assets=preview["related_assets"],
+        )
+
+    async def save_investigation_document(
+        self,
+        path: ContextualPath,
+        title: str | None = None,
+        document_type: str = "Analysis",
+    ) -> WriteBackResult:
+        """Deprecated alias for publish_result."""
+        return await self.publish_result(path, title=title, document_type=document_type)

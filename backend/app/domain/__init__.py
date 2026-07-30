@@ -16,6 +16,8 @@ from .models import (
     StepSelection,
     SynthesisContext,      # <-- tambahkan
     SynthesisResult,       # <-- tambahkan (opsional, tapi aman)
+    WriteBackRequest,
+    WriteBackResult,
 )
 
 __all__ = [
@@ -36,4 +38,6 @@ __all__ = [
     "StepSelection",
     "SynthesisContext",
     "SynthesisResult",
+    "WriteBackRequest",
+    "WriteBackResult",
 ]

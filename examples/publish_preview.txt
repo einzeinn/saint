@@ -1,0 +1,36 @@
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  SAINT ─ Publishing Preview
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Publish investigation summary to DataHub as a Document? [Y/n]: Y
+
+  ╭─────────────────── Publishing Preview ───────────────────╮
+  │  Title          │  Revenue Dashboard Investigation        │
+  │  Type           │  Analysis                               │
+  │  Related Assets │  SampleBigQueryDataset, Baz Chart,      │
+  │                 │  Revenue Dashboard, Datahub Sales        │
+  │  Topics         │  saint-analysis, explore                 │
+  ╰──────────────────────────────────────────────────────────╯
+
+  Confirm publishing to DataHub? [Y/n]: Y
+
+  Publishing document to DataHub...  ⠋
+
+  ✓ Published to DataHub!
+    Document 'Revenue Dashboard Investigation' written to catalog.
+    URN: urn:li:document:shared-saint-revenue-dashboard-investigation
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+SESSION NOTES
+─────────────
+- Session type: saint solve (hypothesis testing)
+- Goal: "I want to understand why the revenue dashboard changed"
+- DataHub provider: agent_context (live)
+- GMS URL: http://localhost:8080
+- Context entities fetched: 4
+- schemaField URNs filtered from relatedAssets: 2
+  (DataHub GMS only accepts entity-level URNs in relatedAssets)
+- Document published successfully on first attempt after filter fix.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
