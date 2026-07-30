@@ -93,4 +93,4 @@ Most DataHub integrations are read-only. SAINT reads context *and writes knowled
 
 ## Category
 
-**Agents That Do Real Work** — SAINT reads DataHub through the Agent Context Kit, takes action (structured investigation), and writes results back so the next person or agent inherits the knowledge.
+**Open / Wildcard** — SAINT is a novel application of DataHub's context graph as a *goal-driven navigation layer*. It reframes the catalog from a passive metadata store into an active reasoning environment: the agent uses DataHub to figure out what a person needs to understand and do next, then writes the result back so knowledge persists. This goes beyond standard "agents that do work" — it's a new interaction paradigm on top of DataHub's open-source stack (Agent Context Kit + DataHub Skills).
