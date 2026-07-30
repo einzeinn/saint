@@ -1,13 +1,32 @@
 [build-system]
-requires = ["setuptools>=75"]
+requires = ["setuptools>=75", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "saint"
+name = "saint-datahub"
 version = "0.1.0"
-description = "A context-aware path from user goals to understanding and action."
+description = "A context-aware AI agent that turns data goals into investigation paths, powered by DataHub."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12,<3.13"
+license = "Apache-2.0"
+authors = [
+    { name = "M Rifki Haipal", email = "quiiplle@gmail.com" }
+]
+keywords = [
+    "datahub", "agent", "context", "data", "cli",
+    "metadata", "investigation", "ai", "llm"
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
 dependencies = [
     "fastapi>=0.115,<1.0",
     "httpx>=0.27,<1.0",
@@ -24,11 +43,17 @@ agent-context = [
     "datahub-agent-context>=1.6,<2.0",
 ]
 
+[project.urls]
+Homepage = "https://github.com/einzeinn/saint"
+Repository = "https://github.com/einzeinn/saint"
+"Bug Tracker" = "https://github.com/einzeinn/saint/issues"
+Documentation = "https://github.com/einzeinn/saint/blob/main/docs/JudgeSetup.md"
+
 [project.scripts]
 saint = "backend.app.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["backend*"]
+include = ["backend*", "skills*"]
 
 [project.entry-points."datahub_agent_context.skills"]
 saint_investigator = "skills.saint_investigator:SaintInvestigatorSkill"

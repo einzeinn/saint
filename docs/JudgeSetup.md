@@ -1,6 +1,6 @@
 # Judge Setup: SAINT CLI
 
-> **TL;DR:** Run `pip install -e . && saint demo` — no DataHub, no Docker, no API key required.
+> **TL;DR:** `pip install saint-datahub && saint demo` — no DataHub, no Docker, no API key required.
 
 ---
 
@@ -15,7 +15,7 @@ SAINT is a CLI-first AI agent that turns data goals into structured investigatio
 
 ## Prerequisites
 
-- Python 3.11 or newer
+- Python **3.12** (3.12.x — other versions not tested)
 - Git
 
 No Docker, no DataHub account, no MCP server, no tokens required for the base demo.
@@ -24,8 +24,16 @@ No Docker, no DataHub account, no MCP server, no tokens required for the base de
 
 ## Install
 
+**Option A — PyPI (no clone needed):**
+
 ```bash
-git clone <repo-url>
+pip install saint-datahub
+```
+
+**Option B — From source:**
+
+```bash
+git clone https://github.com/einzeinn/saint.git
 cd saint
 python -m venv .venv
 
@@ -87,7 +95,7 @@ If you have a DataHub instance running, you can see live context discovery and w
 **Step 1:** Install the Agent Context Kit extra
 
 ```bash
-pip install "saint[agent-context]"
+pip install "saint-datahub[agent-context]"
 ```
 
 **Step 2:** Set environment variables (`.env` file or shell):

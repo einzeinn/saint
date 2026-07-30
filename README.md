@@ -2,8 +2,9 @@
 
 > **"People don't need more information. They need help discovering which information matters, why it matters, and what to do with it."**
 
+[![PyPI](https://img.shields.io/pypi/v/saint-datahub?color=00c4a7)](https://pypi.org/project/saint-datahub/)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
-[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)](https://python.org)
+[![Python 3.12](https://img.shields.io/badge/python-3.12-blue)](https://python.org)
 [![Built with DataHub](https://img.shields.io/badge/built%20with-DataHub%20Agent%20Context%20Kit-00c4a7)](https://docs.datahub.com/docs/dev-guides/agent-context/agent-context)
 [![Hackathon](https://img.shields.io/badge/DataHub-Agent%20Hackathon%202026-orange)](https://datahub.devpost.com/)
 
@@ -46,9 +47,17 @@ This is the key loop that DataHub's context graph makes possible. Without real m
 
 **No DataHub, no Docker, no credentials required to try:**
 
+**Option A — Install from PyPI (easiest):**
+
 ```bash
-# Clone and install
-git clone https://github.com/your-org/saint.git
+pip install saint-datahub
+saint demo
+```
+
+**Option B — Install from source:**
+
+```bash
+git clone https://github.com/einzeinn/saint.git
 cd saint
 python -m venv .venv
 
@@ -163,7 +172,7 @@ Context graph: schemas, lineage, ownership, quality, domains
 ## Connected Mode (Optional)
 
 ```bash
-pip install "saint[agent-context]"
+pip install "saint-datahub[agent-context]"
 ```
 
 Set environment variables:
